@@ -138,18 +138,130 @@ export type Booking = z.infer<typeof BookingSchema>;
 export const BookingsResponseSchema = paginatedSchema(BookingSchema);
 export type BookingsResponse = z.infer<typeof BookingsResponseSchema>;
 
+// --- Projects -------------------------------------------------------------
+
+export const ProjectTypeSchema = z.enum(["apartment", "villa", "plotted"]);
+export type ProjectType = z.infer<typeof ProjectTypeSchema>;
+
+export const ProjectSchema = z
+  .object({
+    id: z.string(),
+    name: z.string(),
+    type: ProjectTypeSchema,
+    city: z.string().optional(),
+    launchDate: z.string().nullable().optional(),
+    possessionDate: z.string().nullable().optional(),
+    isActive: z.boolean().optional(),
+    createdAt: z.string().optional(),
+    tenantId: z.string().optional(),
+  })
+  .passthrough();
+export type Project = z.infer<typeof ProjectSchema>;
+
+export const ProjectsResponseSchema = paginatedSchema(ProjectSchema);
+export type ProjectsResponse = z.infer<typeof ProjectsResponseSchema>;
+
+// --- Towers ---------------------------------------------------------------
+
+export const TowerSchema = z
+  .object({
+    id: z.string(),
+    tenantId: z.string().optional(),
+    projectId: z.string(),
+    name: z.string(),
+    totalFloors: z.number().int().nonnegative().optional(),
+    facing: z.string().nullable().optional(),
+    createdAt: z.string().optional(),
+  })
+  .passthrough();
+export type Tower = z.infer<typeof TowerSchema>;
+
+/**
+ * Canonical shape returned by `GET /projects/:id/towers` — same paginated
+ * envelope every other list endpoint uses. No union (per backend review B1).
+ */
+export const TowersResponseSchema = z.object({
+  data: z.array(TowerSchema),
+  total: z.number().int().nonnegative(),
+  page: z.number().int().nonnegative().optional(),
+  pageSize: z.number().int().nonnegative().optional(),
+});
+export type TowersResponse = z.infer<typeof TowersResponseSchema>;
+
 // --- Units ----------------------------------------------------------------
 
+export const UnitStatusSchema = z.enum([
+  "available",
+  "blocked",
+  "booked",
+  "sold",
+  "held",
+]);
+export type UnitStatus = z.infer<typeof UnitStatusSchema>;
+
+/**
+ * Widened from feat-0001 (which only read `total` from the paginated envelope).
+ * All new fields optional + passthrough so feat-0001's consumers are
+ * backward-compatible.
+ */
 export const UnitSchema = z
   .object({
     id: z.string(),
+    unitNumber: z.string().optional(),
+    floor: z.number().int().optional(),
+    bedrooms: z.number().int().optional(),
+    area: z.number().optional(),
+    facing: z.string().nullable().optional(),
+    isCorner: z.boolean().optional(),
+    towerId: z.string().nullable().optional(),
+    projectId: z.string().optional(),
     status: z.string().optional(),
+    effectivePrice: z.number().nullable().optional(),
   })
   .passthrough();
 export type Unit = z.infer<typeof UnitSchema>;
 
 export const UnitsResponseSchema = paginatedSchema(UnitSchema);
 export type UnitsResponse = z.infer<typeof UnitsResponseSchema>;
+
+// --- Unit price config ----------------------------------------------------
+
+export const UnitPriceConfigSchema = z
+  .object({
+    id: z.string().optional(),
+    unitId: z.string(),
+    basePrice: z.number(),
+    floorPremium: z.number(),
+    facingPremium: z.number(),
+    cornerPremium: z.number(),
+    discount: z.number(),
+    effectivePrice: z.number(),
+  })
+  .passthrough();
+export type UnitPriceConfig = z.infer<typeof UnitPriceConfigSchema>;
+
+// --- Booking create -------------------------------------------------------
+
+export const CreateBookingRequestSchema = z.object({
+  leadId: z.string().min(1),
+  unitId: z.string().min(1),
+  bookingAmount: z.number().nonnegative().optional(),
+});
+export type CreateBookingRequest = z.infer<typeof CreateBookingRequestSchema>;
+
+/**
+ * Strict shape for the `POST /bookings` success response. NOT `.passthrough()`
+ * so the 502 guard at the BFF is reachable when the backend drops `id` or
+ * `unitId` (per backend review N4).
+ */
+export const BookingCreatedSchema = z.object({
+  id: z.string(),
+  bookingNumber: z.string().optional(),
+  status: z.string().optional(),
+  unitId: z.string(),
+  leadId: z.string().optional(),
+});
+export type BookingCreated = z.infer<typeof BookingCreatedSchema>;
 
 // --- Metrics --------------------------------------------------------------
 
