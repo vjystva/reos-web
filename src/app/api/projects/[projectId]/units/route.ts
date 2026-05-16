@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { proxyFetch } from "@/lib/api";
 import { UnitsResponseSchema } from "@/types/api";
+import { isDemoRequest, getDemoUnits } from "@/lib/demo";
 
 /**
  * GET /api/projects/[projectId]/units — single client-facing units endpoint
@@ -21,6 +22,10 @@ export async function GET(
   const { projectId } = ctx.params;
   if (!projectId) {
     return NextResponse.json({ error: "missing_project_id" }, { status: 400 });
+  }
+  if (isDemoRequest(req)) {
+    const { searchParams } = new URL(req.url);
+    return NextResponse.json(getDemoUnits(projectId, searchParams), { status: 200 });
   }
 
   const incoming = new URL(req.url);

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { proxyFetch } from "@/lib/api";
 import { UnitPriceConfigSchema } from "@/types/api";
+import { isDemoRequest, getDemoPriceConfig } from "@/lib/demo";
 
 /**
  * GET /api/units/[unitId]/price-config — proxies to backend
@@ -15,6 +16,12 @@ export async function GET(
   if (!unitId) {
     return NextResponse.json({ error: "missing_unit_id" }, { status: 400 });
   }
+  if (isDemoRequest(req)) {
+    const config = getDemoPriceConfig(unitId);
+    if (!config) return NextResponse.json({ error: "not_found" }, { status: 404 });
+    return NextResponse.json(config, { status: 200 });
+  }
+
   const upstream = await proxyFetch(
     req,
     `/units/${encodeURIComponent(unitId)}/price-config`,

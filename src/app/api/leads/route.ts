@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { proxyFetch } from "@/lib/api";
 import { LeadsResponseSchema } from "@/types/api";
+import { isDemoRequest, getDemoLeads } from "@/lib/demo";
 
 /**
  * GET /api/leads — proxies to backend /leads with query params passed through.
@@ -8,6 +9,11 @@ import { LeadsResponseSchema } from "@/types/api";
  * is returned so failures are loud, not silent.
  */
 export async function GET(req: NextRequest): Promise<NextResponse> {
+  if (isDemoRequest(req)) {
+    const { searchParams } = new URL(req.url);
+    return NextResponse.json(getDemoLeads(searchParams), { status: 200 });
+  }
+
   const url = new URL(req.url);
   const qs = url.search; // includes leading "?" or empty string
   const upstream = await proxyFetch(req, `/leads${qs}`);

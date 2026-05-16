@@ -5,8 +5,11 @@ import {
   BookingCreatedSchema,
   CreateBookingRequestSchema,
 } from "@/types/api";
+import { isDemoRequest, getDemoBookings } from "@/lib/demo";
 
 export async function GET(req: NextRequest): Promise<NextResponse> {
+  if (isDemoRequest(req)) return NextResponse.json(getDemoBookings(), { status: 200 });
+
   const url = new URL(req.url);
   const qs = url.search;
   const upstream = await proxyFetch(req, `/bookings${qs}`);
@@ -65,6 +68,15 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       { error: "invalid_body", details: parsedBody.error.issues },
       { status: 400 },
     );
+  }
+  if (isDemoRequest(req)) {
+    return NextResponse.json({
+      id: `bk-demo-${Date.now()}`,
+      bookingNumber: `BK${Date.now()}`,
+      status: "confirmed",
+      unitId: parsedBody.data.unitId,
+      leadId: parsedBody.data.leadId,
+    }, { status: 201 });
   }
 
   const upstream = await proxyFetch(req, "/bookings", {

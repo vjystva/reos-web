@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { proxyFetch } from "@/lib/api";
 import { ProjectSchema } from "@/types/api";
+import { isDemoRequest, getDemoProject } from "@/lib/demo";
 
 /**
  * GET /api/projects/[projectId] — proxies to backend /projects/:id.
@@ -13,6 +14,12 @@ export async function GET(
   if (!projectId) {
     return NextResponse.json({ error: "missing_project_id" }, { status: 400 });
   }
+  if (isDemoRequest(req)) {
+    const project = getDemoProject(projectId);
+    if (!project) return NextResponse.json({ error: "not_found" }, { status: 404 });
+    return NextResponse.json(project, { status: 200 });
+  }
+
   const upstream = await proxyFetch(
     req,
     `/projects/${encodeURIComponent(projectId)}`,

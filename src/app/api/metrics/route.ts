@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { proxyFetch } from "@/lib/api";
 import { MetricsResponseSchema } from "@/types/api";
+import { isDemoRequest, DEMO_METRICS } from "@/lib/demo";
 
 /**
  * Fan-out aggregator for the dashboard metrics cards.
@@ -52,6 +53,8 @@ async function fetchTotal(req: NextRequest, path: string): Promise<number> {
 }
 
 export async function GET(req: NextRequest): Promise<NextResponse> {
+  if (isDemoRequest(req)) return NextResponse.json(DEMO_METRICS, { status: 200 });
+
   const settled = await Promise.allSettled(
     SLOTS.map((slot) => fetchTotal(req, slot.path)),
   );

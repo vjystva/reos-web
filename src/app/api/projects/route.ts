@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { proxyFetch } from "@/lib/api";
 import { ProjectsResponseSchema } from "@/types/api";
+import { isDemoRequest, getDemoProjects } from "@/lib/demo";
 
 /**
  * GET /api/projects — proxies to backend /projects with query params passed
@@ -8,6 +9,8 @@ import { ProjectsResponseSchema } from "@/types/api";
  * ProjectsResponseSchema; shape mismatch yields 502.
  */
 export async function GET(req: NextRequest): Promise<NextResponse> {
+  if (isDemoRequest(req)) return NextResponse.json(getDemoProjects(), { status: 200 });
+
   const url = new URL(req.url);
   const qs = url.search; // includes leading "?" or empty
   const upstream = await proxyFetch(req, `/projects${qs}`);
