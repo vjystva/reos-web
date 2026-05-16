@@ -386,3 +386,293 @@ Non-blocking suggestions N1–N5 from the review are tracked but deferred to imp
 - **Middleware-side token refresh** — rejected. Edge runtime cookie mutation interacts awkwardly with in-flight API calls; refresh stays in the BFF proxy where the singleton can dedupe (D1).
 - **One React Query hook per metric (4 queries)** — rejected. Four parallel pollers quadruple traffic and complicate the poll indicator. One `/api/metrics` route fan-out (D3) is simpler and lower-load.
 - **Kanban with drag-and-drop** — rejected. Out of scope (feasibility's stakeholder-expectation check). v1 Kanban is read-only.
+
+---
+
+## feat-0002 — Property Inventory Browser
+
+Spec: `/Users/vijaysrivastva/.claude-team/reos-web/specs/feat-0002-spec.md`
+Feasibility: `/Users/vijaysrivastva/.claude-team/reos-web/specs/feat-0002-feasibility.md`
+UX: `/Users/vijaysrivastva/.claude-team/reos-web/design/feat-0002-ux.md`
+
+Surfaces the reos-backend inventory + booking APIs (feat-0003) in the web frontend. Adds a two-route inventory section (`/dashboard/inventory`, `/dashboard/inventory/[projectId]`), a unit detail slide-over with pricing breakdown, and a booking initiation mini-form. Builds entirely on the feat-0001 foundation — `proxyFetch`, `refreshOrRedirect`, `QueryClientProvider`, `PollIndicator`, `ErrorBanner`, `SkeletonCard`, `Pagination` are reused verbatim. Conventions established in feat-0001 (BFF proxy, httpOnly cookies, Zod-inferred types, URL-synced filters, polling defaults) carry forward unchanged.
+
+### Codebase survey results
+
+- `src/app/api/bookings/route.ts` — exists with `GET` handler only. **Extend** with `POST` (do not create a parallel file).
+- `src/app/api/leads/route.ts` — exists. **Reuse** for the booking-form lead dropdown (`useLeadsForBooking` calls `/api/leads?pageSize=50`).
+- `src/lib/api.ts` — `proxyFetch` + `refreshOrRedirect` are the canonical proxy helpers; every new route uses them.
+- `src/types/api.ts` — already exports `UnitSchema` (thin `passthrough` shape from feat-0001's metrics card) and `paginatedSchema()`. **Extend** by widening `UnitSchema` and adding the new project/tower/price-config/booking-create schemas.
+- `src/components/AppShell.tsx` — has a `NAV` array at module top. **Extend** by appending an "Inventory" entry between Dashboard and Pipeline.
+- `src/hooks/` — `useLeads.ts`, `useLead.ts`, `useMetrics.ts` exist. Add new hooks alongside.
+- `src/components/` — `PollIndicator`, `ErrorBanner`, `SkeletonCard` exist and are reused.
+- No existing `src/app/dashboard/inventory/` tree — new pages.
+- No `src/lib/formatCurrency.ts` — new utility.
+
+### Decisions
+
+#### D1. BFF proxy routes (new + one extension)
+
+All routes use `proxyFetch(req, backendPath)` and follow the feat-0001 contract: 401 from upstream auto-refreshes once; upstream JSON `.safeParse()` against the corresponding Zod schema; shape mismatch yields `502 { error: 'upstream_shape_mismatch' }`.
+
+| Route | Method | File | Upstream |
+|---|---|---|---|
+| `/api/projects` | GET | `src/app/api/projects/route.ts` (new) | `GET /projects?page=&pageSize=&search=` (query passthrough) |
+| `/api/projects/[projectId]` | GET | `src/app/api/projects/[projectId]/route.ts` (new) | `GET /projects/:id` |
+| `/api/projects/[projectId]/towers` | GET | `src/app/api/projects/[projectId]/towers/route.ts` (new) | `GET /projects/:id/towers` |
+| `/api/projects/[projectId]/units` | GET | `src/app/api/projects/[projectId]/units/route.ts` (new) | dispatches based on `?towerId` presence (see below) |
+| `/api/units/[unitId]/price-config` | GET | `src/app/api/units/[unitId]/price-config/route.ts` (new) | `GET /units/:id/price-config` |
+| `/api/bookings` | POST | `src/app/api/bookings/route.ts` (**extend** existing GET route) | `POST /bookings` with `{ leadId, unitId }` JSON body |
+| `/api/leads` | GET | (existing — reused unchanged) | `GET /leads?pageSize=50` for booking-form dropdown |
+
+**Units dispatch rule (per feasibility):** the BFF route at `/api/projects/[projectId]/units` inspects only the incoming `?towerId` query param:
+- `towerId` present → upstream `GET /projects/:id/towers/:towerId/units?<remainingQS>` (apartment path)
+- `towerId` absent → upstream `GET /projects/:id/availability?<remainingQS>` (villa/plot path)
+
+No `project.type` lookup on the server. The client (via `TowerSidebar` auto-selecting the first tower for apartment projects) is responsible for always sending `towerId` when the project has towers. This keeps the BFF stateless and matches the feasibility's "tower dispatch via `towerId` presence is clean" guidance.
+
+**Pass-through query params for units:** `status`, `bedrooms`, `floorMin`, `floorMax`, `priceMin`, `priceMax`, `sortBy`, `page`, `pageSize`, `towerId`. The BFF forwards the request's search string verbatim (after stripping `towerId` from the path-dispatched apartment route to avoid duplication).
+
+**POST `/api/bookings`** (extension of existing GET route in the same file):
+- Validates incoming JSON body against `CreateBookingRequestSchema` (`{ leadId: string, unitId: string }`); 400 on failure.
+- Forwards via `proxyFetch(req, '/bookings', { method: 'POST', body, headers: { 'Content-Type': 'application/json' } })`.
+- Parses upstream success body against `BookingCreatedSchema`; 502 on shape mismatch.
+- 409 from upstream (concurrent booking conflict) passes through with body intact so the client toast can surface the message.
+
+#### D2. Optimistic update — `useMutation` lifecycle (corrected per feasibility risk)
+
+Feasibility explicitly inverts the spec's `onSuccess` pattern. Implementation in `useCreateBooking`:
+
+```ts
+useMutation({
+  mutationFn: ({ leadId, unitId }) => fetch('/api/bookings', { method: 'POST', body: JSON.stringify({ leadId, unitId }) }),
+
+  // 1. Snapshot + apply optimistic patch BEFORE the request.
+  onMutate: async ({ unitId }) => {
+    await queryClient.cancelQueries({ queryKey: ['units'] });           // halt in-flight refetches
+    const snapshots = queryClient.getQueriesData({ queryKey: ['units'] }); // capture every matching cache entry
+    queryClient.setQueriesData({ queryKey: ['units'] }, (old) =>
+      old ? { ...old, data: old.data.map((u) => u.id === unitId ? { ...u, status: 'blocked' } : u) } : old,
+    );
+    return { snapshots };                                                // returned to onError as `context`
+  },
+
+  // 2. Rollback every snapshot on failure. (Toast handled at component level.)
+  onError: (_err, _vars, context) => {
+    context?.snapshots.forEach(([key, value]) => queryClient.setQueryData(key, value));
+  },
+
+  // 3. Always reconcile with server truth — fires on both success and error.
+  onSettled: () => {
+    queryClient.invalidateQueries({ queryKey: ['units'] });
+  },
+});
+```
+
+`setQueriesData` (plural) is used, not `setQueryData`, because the units cache is keyed by `['units', projectId, towerId, filtersHash]` and the optimistic patch must apply across every cached filter permutation that contains the target unit. The same applies to the `getQueriesData` snapshot and the `invalidateQueries`.
+
+#### D3. Pages, components, hooks layout
+
+**Pages** (server components, thin):
+- `src/app/dashboard/inventory/page.tsx` — renders `<ProjectsList />` inside `<Suspense>` (any consumer of `useSearchParams` must be Suspended per App Router constraint).
+- `src/app/dashboard/inventory/[projectId]/page.tsx` — extracts `projectId` from `params`, renders `<ProjectDetail projectId={...} />` inside `<Suspense>`. The detail subtree reads `?towerId=`, `?unitId=`, and all filter params from the URL.
+
+**Role guard:** both server pages perform a role check via the decoded JWT cookie (`role in ['builder_admin','sales_manager','sales_agent']`) and `redirect('/dashboard')` otherwise. The check is server-side (not middleware) because middleware is generic for `/dashboard/:path*` and adding role logic there would couple all future feature additions. A small helper `src/lib/requireRole.ts` reads the cookie via `cookies()` from `next/headers` and centralises the role check.
+
+**Components** (all under `src/components/inventory/`):
+
+| Component | File | Role |
+|---|---|---|
+| `ProjectsList` | `src/components/inventory/ProjectsList.tsx` | Reads `?search=`, `?page=` params; calls `useProjects`; renders search input, card grid, `Pagination`. |
+| `ProjectCard` | `src/components/inventory/ProjectCard.tsx` | name + type badge + city only (no unit-count chips per feasibility scope cut). Entire card is a `<Link>`. |
+| `ProjectSearch` | `src/components/inventory/ProjectSearch.tsx` | 300 ms debounced text input writing `?search=` and resetting `?page=`. |
+| `ProjectDetail` | `src/components/inventory/ProjectDetail.tsx` | Top-level project detail layout; orchestrates `useProject`, `useTowers`, `useUnits`. |
+| `TowerSidebar` | `src/components/inventory/TowerSidebar.tsx` | Hidden when `project.type !== 'apartment'`. Auto-selects first tower on mount when `?towerId` is absent (feasibility risk). `aria-pressed` for selected state. |
+| `UnitFilters` | `src/components/inventory/UnitFilters.tsx` | Status / bedrooms / floor range / price range / sort. All write to URL params. |
+| `UnitGrid` | `src/components/inventory/UnitGrid.tsx` | Responsive CSS grid. Loading → `SkeletonGrid`. Error → `ErrorBanner`. Renders `PollIndicator` driven by `useIsFetching({ queryKey: ['units', projectId] })`. |
+| `UnitCell` | `src/components/inventory/UnitCell.tsx` | Unit tile; sets `?unitId=` on click. |
+| `UnitStatusBadge` | `src/components/inventory/UnitStatusBadge.tsx` | Colour + text label (per WCAG; colour never sole indicator). |
+| `UnitDetailPanel` | `src/components/inventory/UnitDetailPanel.tsx` | Radix `Sheet`, `side="right"` desktop / `side="bottom"` mobile. Two steps gated by local `step` state (`'detail' \| 'booking' \| 'success'`). Closes by clearing `?unitId=`. |
+| `PricingBreakdownTable` | `src/components/inventory/PricingBreakdownTable.tsx` | Five pricing rows + effective price total. INR formatted. Skeleton rows while `useUnitPriceConfig` loads. |
+| `BookingForm` | `src/components/inventory/BookingForm.tsx` | Lead combobox (client-side filtered from `useLeadsForBooking`) + booking amount + Confirm/Cancel. Calls `useCreateBooking`. |
+| `SkeletonGrid` | `src/components/SkeletonGrid.tsx` | New shared skeleton variant (20 unit-tile placeholders). |
+
+**Hooks** (all under `src/hooks/`):
+
+| Hook | Query key | Polling |
+|---|---|---|
+| `useProjects(params)` | `['projects', { search, page }]` | none |
+| `useProject(projectId)` | `['project', projectId]` | none |
+| `useTowers(projectId)` | `['towers', projectId]` | none |
+| `useUnits(projectId, params)` | `['units', projectId, towerId, filtersHash]` | `refetchInterval: 30_000`, `refetchIntervalInBackground: false` |
+| `useUnitPriceConfig(unitId)` | `['unit-price-config', unitId]` | none; `enabled: !!unitId` (fires only when slide-over open) |
+| `useLeadsForBooking()` | `['leads', { pageSize: 50, forBooking: true }]` | none; reuses `/api/leads` route. JWT auto-scopes to current user (per feasibility — no `assignedTo` param). |
+| `useCreateBooking()` | mutation | n/a — see D2 |
+
+**Utilities:**
+- `src/lib/formatCurrency.ts` — `formatINR(value: number): string` using `Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 })`.
+- `src/lib/requireRole.ts` — server-only role guard helper.
+
+#### D4. Zod schemas (extend `src/types/api.ts`)
+
+Additions (existing `UnitSchema` is **widened**, not replaced — feat-0001 only reads `total` from paginated units so the wider shape is backward-compatible):
+
+```ts
+ProjectTypeSchema = z.enum(['apartment', 'villa', 'plot'])
+
+ProjectSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  type: ProjectTypeSchema,
+  city: z.string(),
+  tenantId: z.string().optional(),
+})
+
+TowerSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  projectId: z.string(),
+  floorCount: z.number().int().nonnegative().optional(),
+})
+
+UnitStatusSchema = z.enum(['available', 'blocked', 'booked', 'sold', 'held'])
+
+// WIDENED — feat-0001 UnitSchema was passthrough with id + optional status only.
+UnitSchema = z.object({
+  id: z.string(),
+  unitNumber: z.string().optional(),
+  floor: z.number().int().optional(),
+  bedrooms: z.number().int().optional(),
+  area: z.number().optional(),
+  facing: z.string().optional(),
+  isCorner: z.boolean().optional(),
+  status: z.string().optional(),
+  projectId: z.string().optional(),
+  towerId: z.string().optional(),
+  effectivePrice: z.number().optional(),
+}).passthrough()
+
+UnitPriceConfigSchema = z.object({
+  unitId: z.string(),
+  basePrice: z.number(),
+  floorPremium: z.number(),
+  facingPremium: z.number(),
+  cornerPremium: z.number(),
+  discount: z.number(),
+  effectivePrice: z.number(),
+})
+
+CreateBookingRequestSchema = z.object({
+  leadId: z.string().min(1),
+  unitId: z.string().min(1),
+})
+
+BookingCreatedSchema = z.object({
+  id: z.string(),
+  unitId: z.string(),
+  leadId: z.string().optional(),
+  status: z.string().optional(),
+}).passthrough()
+
+ProjectsResponseSchema = paginatedSchema(ProjectSchema)
+TowersResponseSchema = z.object({ data: z.array(TowerSchema) }).or(z.array(TowerSchema))
+// UnitsResponseSchema already exists from feat-0001 and remains paginatedSchema(UnitSchema)
+```
+
+Feasibility flagged that `GET /units/:id/price-config` may not yet be implemented backend-side. If `useUnitPriceConfig` returns 404/501, `PricingBreakdownTable` falls back to a single-row display of `unit.effectivePrice` (already in `UnitSchema`) with a small "Breakdown unavailable" caption. This fallback is implemented in the component, not the hook — keeping the query path honest about the upstream state.
+
+#### D5. AppShell navigation extension
+
+`src/components/AppShell.tsx` — append one entry to the existing `NAV` array between Dashboard and Pipeline:
+
+```ts
+{ href: "/dashboard/inventory", label: "Inventory", icon: Building2 }
+```
+
+Import `Building2` from `lucide-react`. No structural changes to the component.
+
+#### D6. URL state for project detail
+
+Tower selection and slide-over open/close are entirely URL-driven, consistent with feat-0001 D5 + D6:
+
+| Param | Purpose |
+|---|---|
+| `?towerId` | Selected tower (apartment projects only) |
+| `?unitId` | Open unit slide-over |
+| `?status`, `?bedrooms`, `?floorMin`, `?floorMax`, `?priceMin`, `?priceMax`, `?sortBy` | Unit filters |
+| `?page`, `?pageSize` | Unit grid pagination |
+
+Benefits: browser Back closes the slide-over / switches tower / clears a filter, depending on the most recent param change. Shareable URLs encode the full filter+selection state. React Query keys derive directly from `useSearchParams()` output, so cache invalidation is automatic.
+
+**Suspense boundary:** every `useSearchParams()` consumer (`ProjectsList`, `ProjectSearch`, `ProjectDetail`, `TowerSidebar`, `UnitFilters`, `UnitGrid`, `UnitDetailPanel`) is wrapped in `<Suspense fallback={...}>` at the page level. The App Router build fails otherwise (feat-0001 D5 constraint carries over).
+
+**Filter persistence across tower switches:** when `TowerSidebar` writes a new `?towerId`, all other params are preserved via `new URLSearchParams(currentParams)` merge. Filters do not reset.
+
+### Component breakdown summary
+
+(See D3 table above for the full list with files and roles.)
+
+### Data model / contracts
+
+No DB. All contracts are Zod schemas defined in `src/types/api.ts` (per D4). Each new proxy route runs `.safeParse()` on the upstream JSON before returning; mismatch yields `502 { error: 'upstream_shape_mismatch' }`. The `UnitSchema` widening is additive — feat-0001's metrics card (which reads only `total` from `paginatedSchema(UnitSchema)`) is unaffected because the new fields are all `.optional()` and the schema retains `.passthrough()`.
+
+### Files to modify (existing)
+
+- `src/app/api/bookings/route.ts` — add `POST` handler alongside existing `GET`. POST validates body against `CreateBookingRequestSchema`, forwards via `proxyFetch`, parses success body against `BookingCreatedSchema`, returns 502 on shape mismatch.
+- `src/types/api.ts` — append `ProjectTypeSchema`, `ProjectSchema`, `TowerSchema`, `UnitPriceConfigSchema`, `CreateBookingRequestSchema`, `BookingCreatedSchema`, `ProjectsResponseSchema`, `TowersResponseSchema`. Widen the existing `UnitSchema` (add optional `unitNumber`, `floor`, `bedrooms`, `area`, `facing`, `isCorner`, `projectId`, `towerId`, `effectivePrice`).
+- `src/components/AppShell.tsx` — add `{ href: "/dashboard/inventory", label: "Inventory", icon: Building2 }` to the `NAV` array between Dashboard and Pipeline; import `Building2` from `lucide-react`.
+
+### New files to create (justified)
+
+Each new file fills a hole no existing file covers.
+
+**BFF proxy routes** (no existing route handles these upstream paths):
+- `src/app/api/projects/route.ts`
+- `src/app/api/projects/[projectId]/route.ts`
+- `src/app/api/projects/[projectId]/towers/route.ts`
+- `src/app/api/projects/[projectId]/units/route.ts` (also houses the towerId-presence dispatch)
+- `src/app/api/units/[unitId]/price-config/route.ts`
+
+**Pages** (no existing inventory tree):
+- `src/app/dashboard/inventory/page.tsx`
+- `src/app/dashboard/inventory/[projectId]/page.tsx`
+
+**Components** (all inventory-specific; no existing component covers them):
+- `src/components/inventory/ProjectsList.tsx`
+- `src/components/inventory/ProjectCard.tsx`
+- `src/components/inventory/ProjectSearch.tsx`
+- `src/components/inventory/ProjectDetail.tsx`
+- `src/components/inventory/TowerSidebar.tsx`
+- `src/components/inventory/UnitFilters.tsx`
+- `src/components/inventory/UnitGrid.tsx`
+- `src/components/inventory/UnitCell.tsx`
+- `src/components/inventory/UnitStatusBadge.tsx`
+- `src/components/inventory/UnitDetailPanel.tsx`
+- `src/components/inventory/PricingBreakdownTable.tsx`
+- `src/components/inventory/BookingForm.tsx`
+- `src/components/SkeletonGrid.tsx` (new shared skeleton variant; `SkeletonCard` is card-shaped, not grid-shaped)
+
+**Hooks** (each wraps a distinct query key):
+- `src/hooks/useProjects.ts`
+- `src/hooks/useProject.ts`
+- `src/hooks/useTowers.ts`
+- `src/hooks/useUnits.ts`
+- `src/hooks/useUnitPriceConfig.ts`
+- `src/hooks/useLeadsForBooking.ts`
+- `src/hooks/useCreateBooking.ts`
+
+**Utilities** (genuinely new concerns):
+- `src/lib/formatCurrency.ts` — INR formatting; no existing currency utility.
+- `src/lib/requireRole.ts` — server-side role guard; no existing helper. Centralises the role check so future role-gated pages reuse one function.
+
+### Rejected alternatives
+
+- **Separate modal page for booking (`/dashboard/inventory/[id]/book/[unitId]`).** Rejected. Adds a third route, an extra navigation, and breaks the "stay in flow" UX of the slide-over. Two-step in-Sheet flow keeps focus, preserves URL state (`?unitId=`), and matches the feat-0001 slide-over pattern (D6).
+- **Eager `useUnitPriceConfig` fetch on grid render.** Rejected. The slide-over is opened for at most one unit at a time. Pre-fetching pricing for every visible tile multiplies upstream load by the grid size (often 100+ units) for data the user usually does not see. `enabled: !!unitId` gates the query to slide-over opens only.
+- **Polling on the projects list (`useProjects`).** Rejected. Projects rarely change minute-to-minute, and the projects list is a navigational surface — polling adds traffic with no UX benefit. The 30 s poll lives only on `useUnits` where status churn is real.
+- **Project-type lookup in the units BFF route to choose the upstream endpoint.** Rejected. Would require an extra upstream `GET /projects/:id` per units call (latency + traffic). The `towerId`-presence rule from feasibility is simpler, stateless, and pushes the project-type knowledge to the client (`TowerSidebar` auto-selects the first tower for apartments, so `towerId` is always present when towers exist).
+- **`setQueryData` (singular) on a single cache entry for the optimistic update.** Rejected. The units cache is keyed by `['units', projectId, towerId, filtersHash]` — multiple filter permutations may have the unit cached. `setQueriesData` (plural) patches every matching entry; the singular form would leave stale entries in other filter views.
+- **Filter state in React component state instead of URL params.** Rejected. Breaks browser Back/forward, breaks share-by-URL, and forces ad-hoc query-key wiring. Consistent with feat-0001 D5.
+- **Single `useUnitDetail(unitId)` hook bundling unit + price config.** Rejected. Unit data is already in the grid cache (no extra fetch); price config is a separate upstream call gated by slide-over open. Bundling them would re-fetch unit data unnecessarily on every slide-over open and remove the ability to render unit details immediately while pricing loads.
+- **Middleware-level role check for `/dashboard/inventory/**`.** Rejected. Middleware runs on every `/dashboard/:path*` request and would need a path-to-roles map maintained per feature. A server-component guard (`requireRole`) in each inventory page keeps the role policy co-located with the feature and avoids middleware sprawl.
+- **Combobox with server-side lead search.** Rejected for v1 (feasibility note). Client-side filter on a `pageSize=50` payload is sufficient for the common case; the "(showing first 50)" label surfaces the cap when the response total exceeds 50. Full server-side combobox deferred to v2.
