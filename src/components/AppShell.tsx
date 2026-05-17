@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { LogOut, LayoutDashboard, ListChecks, Building2 } from "lucide-react";
+import { LogOut, LayoutDashboard, ListChecks, Building2, CheckSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -15,6 +15,7 @@ const NAV = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/dashboard/inventory", label: "Inventory", icon: Building2 },
   { href: "/dashboard/pipeline", label: "Pipeline", icon: ListChecks },
+  { href: "/dashboard/tasks", label: "Tasks", icon: CheckSquare },
 ];
 
 export function AppShell({ children }: AppShellProps) {
