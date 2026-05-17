@@ -367,3 +367,60 @@ export type MilestonesResponse = z.infer<typeof MilestonesResponseSchema>;
 
 export const PaymentsResponseSchema = paginatedSchema(PaymentSchema);
 export type PaymentsResponse = z.infer<typeof PaymentsResponseSchema>;
+
+// --- Site Visits (feat-0004) ---------------------------------------------
+
+export const SiteVisitStatusSchema = z.enum([
+  "scheduled",
+  "confirmed",
+  "completed",
+  "cancelled",
+]);
+export type SiteVisitStatus = z.infer<typeof SiteVisitStatusSchema>;
+
+export const SITE_VISIT_STATUSES: SiteVisitStatus[] = [
+  "scheduled",
+  "confirmed",
+  "completed",
+  "cancelled",
+];
+
+export const SiteVisitSchema = z
+  .object({
+    id: z.string(),
+    bookingId: z.string(),
+    tenantId: z.string().optional(),
+    visitDate: z.string(),
+    status: SiteVisitStatusSchema,
+    assignedAgentId: z.string().nullable().optional(),
+    notes: z.string().nullable().optional(),
+    createdAt: z.string(),
+  })
+  .passthrough();
+export type SiteVisit = z.infer<typeof SiteVisitSchema>;
+
+export const SiteVisitHistorySchema = z
+  .object({
+    id: z.string(),
+    siteVisitId: z.string(),
+    status: SiteVisitStatusSchema,
+    changedBy: z.string().nullable().optional(),
+    notes: z.string().nullable().optional(),
+    createdAt: z.string(),
+  })
+  .passthrough();
+export type SiteVisitHistory = z.infer<typeof SiteVisitHistorySchema>;
+
+export const SiteVisitsResponseSchema = paginatedSchema(SiteVisitSchema);
+export type SiteVisitsResponse = z.infer<typeof SiteVisitsResponseSchema>;
+
+export const RescheduleVisitRequestSchema = z.object({
+  visitDate: z.string().min(1, "Visit date is required"),
+  notes: z.string().max(500, "Notes must be 500 characters or fewer").optional(),
+});
+export type RescheduleVisitRequest = z.infer<typeof RescheduleVisitRequestSchema>;
+
+export const CancelVisitRequestSchema = z.object({
+  reason: z.string().min(1, "Reason is required").max(500, "Reason must be 500 characters or fewer"),
+});
+export type CancelVisitRequest = z.infer<typeof CancelVisitRequestSchema>;
