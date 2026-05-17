@@ -424,3 +424,69 @@ export const CancelVisitRequestSchema = z.object({
   reason: z.string().min(1, "Reason is required").max(500, "Reason must be 500 characters or fewer"),
 });
 export type CancelVisitRequest = z.infer<typeof CancelVisitRequestSchema>;
+
+// --- Notifications (feat-0005) -------------------------------------------
+
+export const NotificationSchema = z
+  .object({
+    id: z.string(),
+    tenantId: z.string().optional(),
+    userId: z.string().optional(),
+    type: z.string(),
+    title: z.string(),
+    body: z.string().nullable().optional(),
+    link: z.string().nullable().optional(),
+    isRead: z.boolean(),
+    readAt: z.string().nullable().optional(),
+    createdAt: z.string(),
+  })
+  .passthrough();
+export type Notification = z.infer<typeof NotificationSchema>;
+
+export const NotificationsResponseSchema = paginatedSchema(NotificationSchema);
+export type NotificationsResponse = z.infer<typeof NotificationsResponseSchema>;
+
+export const UnreadCountResponseSchema = z.object({
+  count: z.number().int().nonnegative(),
+});
+export type UnreadCountResponse = z.infer<typeof UnreadCountResponseSchema>;
+
+// --- Analytics (feat-0005) -----------------------------------------------
+
+export const AnalyticsOverviewSchema = z.object({
+  totalLeads: z.number().nullable(),
+  leadsThisMonth: z.number().nullable(),
+  hotLeads: z.number().nullable(),
+  totalBookings: z.number().nullable(),
+  activeBookings: z.number().nullable(),
+  totalRevenue: z.number().nullable(),
+  collectedRevenue: z.number().nullable(),
+  pendingRevenue: z.number().nullable(),
+  totalUnits: z.number().nullable(),
+  availableUnits: z.number().nullable(),
+  bookedUnits: z.number().nullable(),
+  pendingSiteVisits: z.number().nullable(),
+});
+export type AnalyticsOverview = z.infer<typeof AnalyticsOverviewSchema>;
+
+export const FunnelStageSchema = z.object({
+  stage: z.string(),
+  count: z.number().int().nonnegative(),
+});
+export type FunnelStage = z.infer<typeof FunnelStageSchema>;
+
+export const LeadsFunnelResponseSchema = z.object({
+  funnel: z.array(FunnelStageSchema),
+});
+export type LeadsFunnelResponse = z.infer<typeof LeadsFunnelResponseSchema>;
+
+export const RevenueTrendPointSchema = z.object({
+  month: z.string(),
+  amount: z.number(),
+});
+export type RevenueTrendPoint = z.infer<typeof RevenueTrendPointSchema>;
+
+export const RevenueTrendResponseSchema = z.object({
+  trend: z.array(RevenueTrendPointSchema),
+});
+export type RevenueTrendResponse = z.infer<typeof RevenueTrendResponseSchema>;
