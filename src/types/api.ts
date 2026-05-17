@@ -285,3 +285,85 @@ export const ErrorEnvelopeSchema = z.object({
   message: z.string().optional(),
 });
 export type ErrorEnvelope = z.infer<typeof ErrorEnvelopeSchema>;
+
+// --- Payment Management (feat-0003) ---------------------------------------
+
+export const PaymentModeSchema = z.enum([
+  "cheque",
+  "NEFT",
+  "RTGS",
+  "cash",
+  "UPI",
+]);
+export type PaymentMode = z.infer<typeof PaymentModeSchema>;
+
+export const MilestoneStatusSchema = z.enum(["paid", "overdue", "pending"]);
+export type MilestoneStatus = z.infer<typeof MilestoneStatusSchema>;
+
+export const PaymentScheduleSchema = z
+  .object({
+    id: z.string(),
+    name: z.string().optional(),
+    bookingId: z.string(),
+    totalAmount: z.number(),
+    amountPaid: z.number(),
+    outstanding: z.number().optional(),
+  })
+  .passthrough();
+export type PaymentSchedule = z.infer<typeof PaymentScheduleSchema>;
+
+export const MilestoneSchema = z
+  .object({
+    id: z.string(),
+    scheduleId: z.string().optional(),
+    name: z.string(),
+    dueDate: z.string(),
+    dueAmount: z.number(),
+    amountPaid: z.number(),
+    status: MilestoneStatusSchema.optional(),
+    overdue: z.boolean().optional(),
+  })
+  .passthrough();
+export type Milestone = z.infer<typeof MilestoneSchema>;
+
+export const PaymentSchema = z
+  .object({
+    id: z.string(),
+    bookingId: z.string().optional(),
+    milestoneId: z.string().optional(),
+    amount: z.number(),
+    mode: PaymentModeSchema,
+    referenceNumber: z.string().nullable().optional(),
+    receiptNumber: z.string().optional(),
+    status: z.enum(["cleared", "bounced"]).optional(),
+    createdAt: z.string(),
+  })
+  .passthrough();
+export type Payment = z.infer<typeof PaymentSchema>;
+
+export const RecordPaymentRequestSchema = z.object({
+  milestoneId: z.string().min(1, "Select a milestone"),
+  amount: z.number().positive("Enter an amount greater than ₹0"),
+  mode: PaymentModeSchema,
+  referenceNumber: z.string().optional(),
+  notes: z.string().max(500, "Notes must be 500 characters or fewer").optional(),
+});
+export type RecordPaymentRequest = z.infer<typeof RecordPaymentRequestSchema>;
+
+export const RecordPaymentResponseSchema = z
+  .object({
+    id: z.string(),
+    receiptNumber: z.string().optional(),
+    status: z.string().optional(),
+  })
+  .passthrough();
+export type RecordPaymentResponse = z.infer<typeof RecordPaymentResponseSchema>;
+
+export const PaymentSchedulesResponseSchema = paginatedSchema(PaymentScheduleSchema);
+export type PaymentSchedulesResponse = z.infer<typeof PaymentSchedulesResponseSchema>;
+
+export const MilestonesResponseSchema = paginatedSchema(MilestoneSchema);
+export type MilestonesResponse = z.infer<typeof MilestonesResponseSchema>;
+
+export const PaymentsResponseSchema = paginatedSchema(PaymentSchema);
+export type PaymentsResponse = z.infer<typeof PaymentsResponseSchema>;
