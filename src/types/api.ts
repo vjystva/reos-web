@@ -490,3 +490,72 @@ export const RevenueTrendResponseSchema = z.object({
   trend: z.array(RevenueTrendPointSchema),
 });
 export type RevenueTrendResponse = z.infer<typeof RevenueTrendResponseSchema>;
+
+// --- Tasks (feat-0006) ---------------------------------------------------
+
+export const TaskStatusSchema = z.enum([
+  "open",
+  "in_progress",
+  "completed",
+  "cancelled",
+]);
+export type TaskStatus = z.infer<typeof TaskStatusSchema>;
+
+export const TASK_STATUSES: TaskStatus[] = [
+  "open",
+  "in_progress",
+  "completed",
+  "cancelled",
+];
+
+export const TaskPrioritySchema = z.enum(["low", "medium", "high", "urgent"]);
+export type TaskPriority = z.infer<typeof TaskPrioritySchema>;
+
+export const TASK_PRIORITIES: TaskPriority[] = ["low", "medium", "high", "urgent"];
+
+export const TaskResourceTypeSchema = z.enum(["lead", "booking", "site_visit"]);
+export type TaskResourceType = z.infer<typeof TaskResourceTypeSchema>;
+
+export const TaskSchema = z
+  .object({
+    id: z.string(),
+    title: z.string(),
+    description: z.string().nullable().optional(),
+    status: TaskStatusSchema,
+    priority: TaskPrioritySchema,
+    assignedTo: z.string().nullable().optional(),
+    createdBy: z.string().nullable().optional(),
+    dueDate: z.string().nullable().optional(),
+    resourceType: TaskResourceTypeSchema.nullable().optional(),
+    resourceId: z.string().nullable().optional(),
+    completedAt: z.string().nullable().optional(),
+    createdAt: z.string(),
+  })
+  .passthrough();
+export type Task = z.infer<typeof TaskSchema>;
+
+export const TasksResponseSchema = paginatedSchema(TaskSchema);
+export type TasksResponse = z.infer<typeof TasksResponseSchema>;
+
+export const CreateTaskRequestSchema = z.object({
+  title: z.string().min(1, "Title is required").max(200, "Title must be 200 characters or fewer"),
+  description: z.string().max(2000, "Description must be 2000 characters or fewer").optional(),
+  priority: TaskPrioritySchema,
+  assignedTo: z.string().min(1, "Assignee is required"),
+  dueDate: z.string().optional(),
+  resourceType: TaskResourceTypeSchema.optional(),
+  resourceId: z.string().optional(),
+});
+export type CreateTaskRequest = z.infer<typeof CreateTaskRequestSchema>;
+
+export const UpdateTaskRequestSchema = z.object({
+  title: z.string().min(1).max(200).optional(),
+  description: z.string().max(2000).optional(),
+  status: TaskStatusSchema.optional(),
+  priority: TaskPrioritySchema.optional(),
+  assignedTo: z.string().min(1).optional(),
+  dueDate: z.string().nullable().optional(),
+  resourceType: TaskResourceTypeSchema.nullable().optional(),
+  resourceId: z.string().nullable().optional(),
+});
+export type UpdateTaskRequest = z.infer<typeof UpdateTaskRequestSchema>;
