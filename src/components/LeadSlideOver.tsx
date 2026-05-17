@@ -24,7 +24,7 @@ export function LeadSlideOver() {
   const leadId = params.get("leadId");
   const open = Boolean(leadId);
 
-  const { data: lead, isLoading, isError, error } = useLead(leadId);
+  const { data: lead, isLoading, isError, error } = useLead(leadId ?? "");
 
   function close() {
     const next = new URLSearchParams(params.toString());
