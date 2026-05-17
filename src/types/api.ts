@@ -97,18 +97,34 @@ export type LeadScoreBreakdown = z.infer<typeof LeadScoreBreakdownSchema>;
 
 export const LeadSchema = z.object({
   id: z.string(),
+  tenantId: z.string().optional(),
   name: z.string(),
   phone: z.string().nullable().optional(),
   email: z.string().nullable().optional(),
+  source: z.string().nullable().optional(),
   stage: LeadStageSchema,
   temperature: LeadTemperatureSchema,
   aiScore: z.number().nullable().optional(),
   assignedDealer: LeadDealerSchema.nullable().optional(),
+  assignedTo: z.string().nullable().optional(),
+  projectId: z.string().nullable().optional(),
+  notes: z.string().nullable().optional(),
   createdAt: z.string(),
+  updatedAt: z.string().optional(),
   scoreBreakdown: LeadScoreBreakdownSchema.nullable().optional(),
   activity: z.array(LeadActivitySchema).nullable().optional(),
 });
 export type Lead = z.infer<typeof LeadSchema>;
+
+export const LeadResponseSchema = z.object({ lead: LeadSchema });
+export type LeadResponse = z.infer<typeof LeadResponseSchema>;
+
+export const UpdateLeadRequestSchema = z.object({
+  stage: LeadStageSchema.optional(),
+  notes: z.string().max(2000, "Notes must be 2000 characters or fewer").optional(),
+  assignedTo: z.string().optional(),
+});
+export type UpdateLeadRequest = z.infer<typeof UpdateLeadRequestSchema>;
 
 // --- Paginated envelope ---------------------------------------------------
 
