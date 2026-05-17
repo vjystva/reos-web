@@ -5,6 +5,9 @@ import type {
   Project, ProjectsResponse, Tower, TowersResponse,
   Unit, UnitsResponse, UnitPriceConfig,
   Booking, BookingsResponse,
+  PaymentSchedule, PaymentSchedulesResponse,
+  Milestone, MilestonesResponse,
+  Payment, PaymentsResponse,
 } from "@/types/api";
 
 export const DEMO_EMAIL = "admin@demo.com";
@@ -355,4 +358,112 @@ const DEMO_BOOKINGS_DATA: Booking[] = [
 
 export function getDemoBookings(): BookingsResponse {
   return { data: DEMO_BOOKINGS_DATA, total: DEMO_BOOKINGS_DATA.length };
+}
+
+// ---------------------------------------------------------------------------
+// Payment Schedules (feat-0003)
+// ---------------------------------------------------------------------------
+
+const DEMO_PAYMENT_SCHEDULES: PaymentSchedule[] = [
+  {
+    id: "sched-1",
+    name: "Standard Payment Plan",
+    bookingId: "bk-1",
+    totalAmount: 4200000,
+    amountPaid: 840000,
+    outstanding: 3360000,
+  },
+  {
+    id: "sched-2",
+    name: "Standard Payment Plan",
+    bookingId: "bk-2",
+    totalAmount: 3000000,
+    amountPaid: 0,
+    outstanding: 3000000,
+  },
+];
+
+export function getDemoPaymentSchedule(bookingId: string): PaymentSchedulesResponse {
+  const schedules = DEMO_PAYMENT_SCHEDULES.filter((s) => s.bookingId === bookingId);
+  return { data: schedules, total: schedules.length };
+}
+
+// ---------------------------------------------------------------------------
+// Milestones (feat-0003)
+// ---------------------------------------------------------------------------
+
+const DEMO_MILESTONES: Milestone[] = [
+  {
+    id: "ms-1",
+    scheduleId: "sched-1",
+    name: "Token Amount",
+    dueDate: "2024-01-15",
+    dueAmount: 420000,
+    amountPaid: 420000,
+    status: "paid",
+    overdue: false,
+  },
+  {
+    id: "ms-2",
+    scheduleId: "sched-1",
+    name: "Slab Completion",
+    dueDate: "2024-03-01",
+    dueAmount: 1260000,
+    amountPaid: 420000,
+    status: "overdue",
+    overdue: true,
+  },
+  {
+    id: "ms-3",
+    scheduleId: "sched-1",
+    name: "Possession",
+    dueDate: "2024-06-30",
+    dueAmount: 2520000,
+    amountPaid: 0,
+    status: "pending",
+    overdue: false,
+  },
+];
+
+export function getDemoMilestones(scheduleId: string): MilestonesResponse {
+  const milestones = DEMO_MILESTONES.filter((m) => m.scheduleId === scheduleId);
+  return { data: milestones, total: milestones.length };
+}
+
+// ---------------------------------------------------------------------------
+// Payments (feat-0003)
+// ---------------------------------------------------------------------------
+
+const DEMO_PAYMENTS: Payment[] = [
+  {
+    id: "pay-1",
+    bookingId: "bk-1",
+    milestoneId: "ms-1",
+    amount: 420000,
+    mode: "cheque",
+    referenceNumber: "CHQ-001234",
+    receiptNumber: "RCP-0001-00001",
+    status: "cleared",
+    createdAt: "2024-01-20T10:00:00Z",
+  },
+  {
+    id: "pay-2",
+    bookingId: "bk-1",
+    milestoneId: "ms-2",
+    amount: 420000,
+    mode: "NEFT",
+    referenceNumber: "NEFT-UTR-987654",
+    receiptNumber: "RCP-0001-00002",
+    status: "bounced",
+    createdAt: "2024-03-05T14:00:00Z",
+  },
+];
+
+export function getDemoPayments(bookingId: string): PaymentsResponse {
+  const payments = DEMO_PAYMENTS.filter((p) => p.bookingId === bookingId);
+  // Return newest-first
+  const sorted = [...payments].sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  );
+  return { data: sorted, total: sorted.length };
 }

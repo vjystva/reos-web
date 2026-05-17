@@ -676,3 +676,186 @@ Each new file fills a hole no existing file covers.
 - **Single `useUnitDetail(unitId)` hook bundling unit + price config.** Rejected. Unit data is already in the grid cache (no extra fetch); price config is a separate upstream call gated by slide-over open. Bundling them would re-fetch unit data unnecessarily on every slide-over open and remove the ability to render unit details immediately while pricing loads.
 - **Middleware-level role check for `/dashboard/inventory/**`.** Rejected. Middleware runs on every `/dashboard/:path*` request and would need a path-to-roles map maintained per feature. A server-component guard (`requireRole`) in each inventory page keeps the role policy co-located with the feature and avoids middleware sprawl.
 - **Combobox with server-side lead search.** Rejected for v1 (feasibility note). Client-side filter on a `pageSize=50` payload is sufficient for the common case; the "(showing first 50)" label surfaces the cap when the response total exceeds 50. Full server-side combobox deferred to v2.
+
+---
+
+## feat-0003 — Payment Management UI
+
+Spec: `/Users/vijaysrivastva/.claude-team/reos-web/specs/feat-0003-spec.md`
+Feasibility: `/Users/vijaysrivastva/.claude-team/reos-web/specs/feat-0003-feasibility.md`
+UX: `/Users/vijaysrivastva/.claude-team/reos-web/design/feat-0003-ux.md`
+
+Adds a dedicated Payments page reachable from the `UnitSlideOver` booking-success screen. Covers payment schedule with milestones, record-payment form (Sheet), payment history table, receipt slide-over, and bounce action (role-gated). Built entirely on the existing foundation (proxyFetch, TanStack Query v5, Zod, httpOnly cookies, Radix Sheet / AlertDialog, Tailwind, formatCurrency).
+
+### Decisions
+
+#### D1. Page placement and booking-ID flow
+
+**URL:** `/dashboard/inventory/[projectId]/bookings/[bookingId]/payments`
+
+`projectId` is already in the URL context from the inventory browser. `bookingId` comes from the `BookingCreated` response when the user completes the `UnitSlideOver` booking form (step `success`). The success step now renders a "View Payments" button that `router.push`es to the payments page.
+
+For units already in `booked` / `blocked` status, the slide-over detail step (step `detail`) surfaces the booking ID via `unit.bookingId` (a new optional field added to `UnitSchema` with `.passthrough()` — backward-compatible). If `bookingId` is present, the detail footer shows a "View Payments" link.
+
+The payments page itself is a server component that extracts both params from `{ params }`, renders `<PaymentsView projectId bookingId />` inside `<Suspense>`, and applies `requireRole` (any of `builder_admin | sales_manager | sales_agent`).
+
+#### D2. New BFF routes
+
+All routes follow the feat-0001 D2 contract: `proxyFetch` with `reos_token` cookie, 401 auto-refresh once, `.safeParse()` on the upstream JSON body, 502 on shape mismatch.
+
+| BFF route | Method | File | Upstream | Shape schema |
+|---|---|---|---|---|
+| `/api/payment-schedules` | GET | `src/app/api/payment-schedules/route.ts` | `GET /payment-schedules?bookingId=` | `PaymentSchedulesResponseSchema` |
+| `/api/payment-schedules/[scheduleId]/milestones` | GET | `src/app/api/payment-schedules/[scheduleId]/milestones/route.ts` | `GET /payment-schedules/:id/milestones` | `MilestonesResponseSchema` |
+| `/api/payments` | GET | `src/app/api/payments/route.ts` | `GET /payments?bookingId=` | `PaymentsResponseSchema` |
+| `/api/payments` | POST | same file (POST handler) | `POST /payments` body `{ milestoneId, amount, mode, notes? }` | `RecordPaymentResponseSchema` |
+| `/api/payments/[paymentId]/bounce` | POST | `src/app/api/payments/[paymentId]/bounce/route.ts` | `POST /payments/:id/bounce` | passthrough (empty or `{ status }`) |
+
+**Role enforcement on bounce (Feasibility MC-1):** The BFF bounce route decodes `reos_token` with `jose.decodeJwt`, checks `role`. If not in `['builder_admin', 'sales_manager']`, returns `403 { error: 'forbidden' }` immediately without calling the upstream. This is a defence-in-depth layer — the backend enforces the same role independently.
+
+Query param pass-through: all GET routes forward the full incoming `req.url` search string (e.g., `?bookingId=`) to the upstream path.
+
+#### D3. New hooks
+
+| Hook | Query key | File | Enabled guard |
+|---|---|---|---|
+| `usePaymentSchedule(bookingId)` | `['payment-schedule', bookingId]` | `src/hooks/usePaymentSchedule.ts` | `!!bookingId` |
+| `usePaymentMilestones(scheduleId)` | `['payment-milestones', scheduleId]` | `src/hooks/usePaymentMilestones.ts` | `!!scheduleId` |
+| `usePayments(bookingId)` | `['payments', bookingId]` | `src/hooks/usePayments.ts` | `!!bookingId` |
+| `useRecordPaymentMutation()` | mutation | `src/hooks/useRecordPaymentMutation.ts` | n/a |
+| `useBounceMutation()` | mutation | `src/hooks/useBounceMutation.ts` | n/a |
+
+No polling on payment hooks — payments are not real-time; manual refetch on mutation success is sufficient.
+
+`usePaymentMilestones` computes a client-side `derivedStatus` field as a fallback (Feasibility R2): if `milestone.overdue` field is absent and `milestone.amountPaid < milestone.dueAmount` and `milestone.dueDate < today`, `derivedStatus = 'overdue'`; if `amountPaid >= dueAmount`, `derivedStatus = 'paid'`; else `derivedStatus = 'pending'`. The `overdue` field from the server takes precedence when present.
+
+On `useRecordPaymentMutation` success and `useBounceMutation` success: invalidate `['payment-milestones', scheduleId]` and `['payments', bookingId]`. No optimistic updates — payments are financial; wait for server confirmation (UX principle).
+
+#### D4. New components
+
+| Component | File | Description |
+|---|---|---|
+| `PaymentScheduleCard` | `src/components/PaymentScheduleCard.tsx` | Schedule summary card: name, total, paid, outstanding. Skeleton + ErrorBanner states. |
+| `MilestoneList` | `src/components/MilestoneList.tsx` | Table of milestones. Status badge per row (Paid/Overdue/Pending). Row click opens RecordPaymentForm sheet (pending/overdue only). |
+| `RecordPaymentForm` | `src/components/RecordPaymentForm.tsx` | Radix Sheet (right side). Fields: milestone select, amount, mode select, reference, notes. Zod validation. Calls useRecordPaymentMutation. |
+| `PaymentHistoryTable` | `src/components/PaymentHistoryTable.tsx` | Table of payments sorted newest-first. Status badge. "Bounce" button (role-gated). Receipt number clickable (opens ReceiptSlideOver). |
+| `ReceiptSlideOver` | `src/components/ReceiptSlideOver.tsx` | Radix Sheet (right side). Displays receipt details. Opened via `?receipt=` URL param. |
+| Payments page | `src/app/dashboard/inventory/[projectId]/bookings/[bookingId]/payments/page.tsx` | Server component. `requireRole`. Renders `<PaymentsView>` in `<Suspense>`. |
+
+#### D5. Zod schemas (extend `src/types/api.ts`)
+
+```ts
+PaymentModeSchema = z.enum(['cheque', 'NEFT', 'RTGS', 'cash', 'UPI'])
+
+MilestoneStatusSchema = z.enum(['paid', 'overdue', 'pending'])
+
+PaymentScheduleSchema = z.object({
+  id: z.string(),
+  name: z.string().optional(),
+  bookingId: z.string(),
+  totalAmount: z.number(),
+  amountPaid: z.number(),
+  outstanding: z.number().optional(),   // may be computed client-side
+}).passthrough()
+
+MilestoneSchema = z.object({
+  id: z.string(),
+  scheduleId: z.string().optional(),
+  name: z.string(),
+  dueDate: z.string(),
+  dueAmount: z.number(),
+  amountPaid: z.number(),
+  status: MilestoneStatusSchema.optional(),
+  overdue: z.boolean().optional(),
+}).passthrough()
+
+PaymentSchema = z.object({
+  id: z.string(),
+  bookingId: z.string().optional(),
+  milestoneId: z.string().optional(),
+  amount: z.number(),
+  mode: PaymentModeSchema,
+  referenceNumber: z.string().nullable().optional(),
+  receiptNumber: z.string().optional(),
+  status: z.enum(['cleared', 'bounced']).optional(),
+  createdAt: z.string(),
+}).passthrough()
+
+RecordPaymentRequestSchema = z.object({
+  milestoneId: z.string().min(1),
+  amount: z.number().positive(),
+  mode: PaymentModeSchema,
+  referenceNumber: z.string().optional(),
+  notes: z.string().max(500).optional(),
+})
+
+RecordPaymentResponseSchema = z.object({
+  id: z.string(),
+  receiptNumber: z.string().optional(),
+  status: z.string().optional(),
+}).passthrough()
+
+PaymentSchedulesResponseSchema = paginatedSchema(PaymentScheduleSchema)
+  // backend may return array; wrap in paginatedSchema and handle both shapes in the BFF route
+
+MilestonesResponseSchema = paginatedSchema(MilestoneSchema)
+
+PaymentsResponseSchema = paginatedSchema(PaymentSchema)
+```
+
+All schemas use `.passthrough()` on the outer object to tolerate backend schema evolution (Feasibility R1).
+
+#### D6. Demo data extension
+
+`src/lib/demo.ts` is extended with:
+- `DEMO_PAYMENT_SCHEDULE` — one schedule for `bk-1` with three milestones (paid, overdue, pending).
+- `DEMO_MILESTONES` — three milestone objects.
+- `DEMO_PAYMENTS` — two payment records (one cleared, one bounced).
+- `getDemoPaymentSchedule(bookingId)`, `getDemoMilestones(scheduleId)`, `getDemoPayments(bookingId)` — helpers used by the BFF routes when `isDemoRequest`.
+- Bounce route in demo mode: returns `200 { status: 'bounced' }` without touching demo data (stateless).
+
+#### D7. UnitSlideOver extension (existing file modification)
+
+`src/components/UnitSlideOver.tsx` — two minimal changes:
+1. **Success step:** add a "View Payments" button below the success message. Navigates to `/dashboard/inventory/${projectId}/bookings/${createdBooking.id}/payments`. `projectId` is read from the URL via `useParams()` (App Router).
+2. **Detail step (booked/blocked unit):** if `unit.bookingId` is present, render a "View Payments" link in the footer alongside or replacing the "Book this unit" button.
+
+No structural changes to the component's step machine or sheet layout.
+
+### Files to modify (existing)
+
+- `src/types/api.ts` — append 7 new schemas + types.
+- `src/components/UnitSlideOver.tsx` — add "View Payments" entry point (D7).
+- `src/lib/demo.ts` — extend with payment fixture data (D6).
+
+### New files to create
+
+**BFF routes:**
+- `src/app/api/payment-schedules/route.ts`
+- `src/app/api/payment-schedules/[scheduleId]/milestones/route.ts`
+- `src/app/api/payments/route.ts`
+- `src/app/api/payments/[paymentId]/bounce/route.ts`
+
+**Page:**
+- `src/app/dashboard/inventory/[projectId]/bookings/[bookingId]/payments/page.tsx`
+
+**Components:**
+- `src/components/PaymentScheduleCard.tsx`
+- `src/components/MilestoneList.tsx`
+- `src/components/RecordPaymentForm.tsx`
+- `src/components/PaymentHistoryTable.tsx`
+- `src/components/ReceiptSlideOver.tsx`
+
+**Hooks:**
+- `src/hooks/usePaymentSchedule.ts`
+- `src/hooks/usePaymentMilestones.ts`
+- `src/hooks/usePayments.ts`
+- `src/hooks/useRecordPaymentMutation.ts`
+- `src/hooks/useBounceMutation.ts`
+
+### Rejected alternatives
+
+- **Slide-over extension instead of a full page.** Rejected. The payments surface has three distinct data sections (schedule, milestones, history) plus a form and a receipt slide-over. Nesting all of that inside the existing `UnitSlideOver` Sheet would be unacceptably cramped and would break URL shareability. A dedicated page at a stable URL gives bookmarking, breadcrumb navigation, and a clean focus surface.
+- **`useSearchParams` for receipt open/close.** The receipt slide-over is opened via `?receipt=<receiptNumber>` URL param, consistent with the D6 slide-over pattern from feat-0001/0002. The `ReceiptSlideOver` consumer is wrapped in `<Suspense>` per App Router constraint (Feasibility MC-2).
+- **Optimistic update on record/bounce.** Rejected per UX principle 5 (payments are financial — wait for server confirmation). Stale UI after a failed payment is actively harmful.
+- **Client-side role enforcement only.** Rejected per Feasibility MC-1. BFF bounce route enforces role server-side; the client-side hidden button is a UX nicety, not a security control.
