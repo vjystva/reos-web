@@ -559,3 +559,71 @@ export const UpdateTaskRequestSchema = z.object({
   resourceId: z.string().nullable().optional(),
 });
 export type UpdateTaskRequest = z.infer<typeof UpdateTaskRequestSchema>;
+
+// --- Documents (feat-0007) ------------------------------------------------
+
+export const DocumentResourceTypeSchema = z.enum([
+  "booking",
+  "lead",
+  "project",
+  "task",
+]);
+export type DocumentResourceType = z.infer<typeof DocumentResourceTypeSchema>;
+
+export const DOCUMENT_RESOURCE_TYPES: DocumentResourceType[] = [
+  "booking",
+  "lead",
+  "project",
+  "task",
+];
+
+export const DocumentFileTypeSchema = z.enum([
+  "pdf",
+  "image",
+  "spreadsheet",
+  "other",
+]);
+export type DocumentFileType = z.infer<typeof DocumentFileTypeSchema>;
+
+export const DOCUMENT_FILE_TYPES: DocumentFileType[] = [
+  "pdf",
+  "image",
+  "spreadsheet",
+  "other",
+];
+
+export const DocumentSchema = z
+  .object({
+    id: z.string(),
+    tenantId: z.string(),
+    resourceType: DocumentResourceTypeSchema,
+    resourceId: z.string(),
+    name: z.string(),
+    url: z.string(),
+    fileType: DocumentFileTypeSchema,
+    fileSize: z.number().nonnegative().optional(),
+    createdAt: z.string(),
+  })
+  .passthrough();
+export type Document = z.infer<typeof DocumentSchema>;
+
+export const DocumentsResponseSchema = z.object({
+  documents: z.array(DocumentSchema),
+});
+export type DocumentsResponse = z.infer<typeof DocumentsResponseSchema>;
+
+export const CreateDocumentRequestSchema = z.object({
+  resourceType: DocumentResourceTypeSchema,
+  resourceId: z.string().min(1, "Resource ID is required"),
+  name: z
+    .string()
+    .min(1, "Name is required")
+    .max(255, "Name must be 255 characters or fewer"),
+  url: z
+    .string()
+    .min(1, "URL is required")
+    .url("Enter a valid URL"),
+  fileType: DocumentFileTypeSchema,
+  fileSize: z.number().positive("File size must be greater than 0").optional(),
+});
+export type CreateDocumentRequest = z.infer<typeof CreateDocumentRequestSchema>;
