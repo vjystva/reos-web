@@ -507,6 +507,36 @@ export const RevenueTrendResponseSchema = z.object({
 });
 export type RevenueTrendResponse = z.infer<typeof RevenueTrendResponseSchema>;
 
+// --- Analytics deep-dive (feat-0010) -------------------------------------
+
+export const BookingsByProjectPointSchema = z.object({
+  projectId: z.string(),
+  projectName: z.string(),
+  bookingCount: z.number(),
+  totalRevenue: z.number(),
+});
+export type BookingsByProjectPoint = z.infer<typeof BookingsByProjectPointSchema>;
+
+export const BookingsByProjectResponseSchema = z.object({
+  data: z.array(BookingsByProjectPointSchema),
+});
+export type BookingsByProjectResponse = z.infer<
+  typeof BookingsByProjectResponseSchema
+>;
+
+export const TopDealerPointSchema = z.object({
+  dealerId: z.string(),
+  dealerName: z.string(),
+  leadCount: z.number(),
+  conversionRate: z.number(),
+});
+export type TopDealerPoint = z.infer<typeof TopDealerPointSchema>;
+
+export const TopDealersResponseSchema = z.object({
+  dealers: z.array(TopDealerPointSchema),
+});
+export type TopDealersResponse = z.infer<typeof TopDealersResponseSchema>;
+
 // --- Tasks (feat-0006) ---------------------------------------------------
 
 export const TaskStatusSchema = z.enum([
