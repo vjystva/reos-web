@@ -643,3 +643,65 @@ export const CreateDocumentRequestSchema = z.object({
   fileSize: z.number().positive("File size must be greater than 0").optional(),
 });
 export type CreateDocumentRequest = z.infer<typeof CreateDocumentRequestSchema>;
+
+// --- Dealers (feat-0009) -------------------------------------------------
+
+export const DealerStatusSchema = z.enum(["active", "inactive", "suspended"]);
+export type DealerStatus = z.infer<typeof DealerStatusSchema>;
+
+export const DEALER_STATUSES: DealerStatus[] = [
+  "active",
+  "inactive",
+  "suspended",
+];
+
+export const DealerSchema = z
+  .object({
+    id: z.string(),
+    tenantId: z.string(),
+    name: z.string(),
+    email: z.string().optional(),
+    phone: z.string().optional(),
+    region: z.string().optional(),
+    commissionRate: z.number().optional(),
+    status: DealerStatusSchema,
+    createdAt: z.string(),
+    updatedAt: z.string(),
+  })
+  .passthrough();
+export type Dealer = z.infer<typeof DealerSchema>;
+
+export const DealersResponseSchema = z.object({
+  dealers: z.array(DealerSchema),
+});
+export type DealersResponse = z.infer<typeof DealersResponseSchema>;
+
+export const CreateDealerRequestSchema = z.object({
+  name: z.string().min(1, "Name required"),
+  email: z
+    .string()
+    .email("Enter a valid email address")
+    .optional(),
+  phone: z.string().optional(),
+  region: z.string().optional(),
+  commissionRate: z
+    .number()
+    .min(0, "Commission must be 0 or greater")
+    .max(100, "Commission must be 100 or less")
+    .optional(),
+});
+export type CreateDealerRequest = z.infer<typeof CreateDealerRequestSchema>;
+
+export const UpdateDealerRequestSchema = z.object({
+  name: z.string().min(1, "Name required").optional(),
+  email: z.string().email("Enter a valid email address").optional(),
+  phone: z.string().optional(),
+  region: z.string().optional(),
+  commissionRate: z
+    .number()
+    .min(0, "Commission must be 0 or greater")
+    .max(100, "Commission must be 100 or less")
+    .optional(),
+  status: DealerStatusSchema.optional(),
+});
+export type UpdateDealerRequest = z.infer<typeof UpdateDealerRequestSchema>;
