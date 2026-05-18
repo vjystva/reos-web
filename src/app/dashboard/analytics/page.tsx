@@ -5,15 +5,21 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { MetricCard } from "@/components/MetricCard";
 import { LeadsFunnelChart } from "@/components/LeadsFunnelChart";
 import { RevenueTrendChart } from "@/components/RevenueTrendChart";
+import { BookingsByProjectChart } from "@/components/BookingsByProjectChart";
+import { TopDealersTable } from "@/components/TopDealersTable";
 import { useAnalyticsOverview } from "@/hooks/useAnalyticsOverview";
 import { useLeadsFunnel } from "@/hooks/useLeadsFunnel";
 import { useRevenueTrend } from "@/hooks/useRevenueTrend";
+import { useBookingsByProject } from "@/hooks/useBookingsByProject";
+import { useTopDealers } from "@/hooks/useTopDealers";
 import { formatCurrency } from "@/lib/formatCurrency";
 
 export default function AnalyticsPage() {
   const overviewQuery = useAnalyticsOverview();
   const funnelQuery = useLeadsFunnel();
   const trendQuery = useRevenueTrend();
+  const bookingsByProjectQuery = useBookingsByProject();
+  const topDealersQuery = useTopDealers();
 
   const ov = overviewQuery.data;
 
@@ -101,6 +107,37 @@ export default function AnalyticsPage() {
               isLoading={trendQuery.isLoading}
               isError={trendQuery.isError}
               onRetry={() => void trendQuery.refetch()}
+            />
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Deep dive: bookings by project + top dealers */}
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Bookings by Project</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <BookingsByProjectChart
+              data={bookingsByProjectQuery.data?.data}
+              isLoading={bookingsByProjectQuery.isLoading}
+              isError={bookingsByProjectQuery.isError}
+              onRetry={() => void bookingsByProjectQuery.refetch()}
+            />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Top Dealers</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <TopDealersTable
+              dealers={topDealersQuery.data?.dealers}
+              isLoading={topDealersQuery.isLoading}
+              isError={topDealersQuery.isError}
+              onRetry={() => void topDealersQuery.refetch()}
             />
           </CardContent>
         </Card>
