@@ -809,3 +809,119 @@ export const ReportJobsResponseSchema = z.object({
   jobs: z.array(ReportJobSchema),
 });
 export type ReportJobsResponse = z.infer<typeof ReportJobsResponseSchema>;
+
+// --- Communications (feat-0012) ------------------------------------------
+
+export const CommunicationChannelSchema = z.enum(["email", "sms", "whatsapp"]);
+export type CommunicationChannel = z.infer<typeof CommunicationChannelSchema>;
+
+export const COMMUNICATION_CHANNELS: CommunicationChannel[] = [
+  "email",
+  "sms",
+  "whatsapp",
+];
+
+export const CommunicationLogStatusSchema = z.enum([
+  "queued",
+  "sent",
+  "delivered",
+  "failed",
+]);
+export type CommunicationLogStatus = z.infer<
+  typeof CommunicationLogStatusSchema
+>;
+
+export const COMMUNICATION_LOG_STATUSES: CommunicationLogStatus[] = [
+  "queued",
+  "sent",
+  "delivered",
+  "failed",
+];
+
+export const CommunicationTemplateSchema = z
+  .object({
+    id: z.string(),
+    tenantId: z.string().optional(),
+    name: z.string(),
+    channel: CommunicationChannelSchema,
+    subject: z.string().nullable().optional(),
+    bodyTemplate: z.string(),
+    variables: z.array(z.string()).nullable().optional(),
+    isActive: z.boolean().optional(),
+    createdAt: z.string().optional(),
+    updatedAt: z.string().optional(),
+  })
+  .passthrough();
+export type CommunicationTemplate = z.infer<typeof CommunicationTemplateSchema>;
+
+export const CommunicationTemplatesResponseSchema = paginatedSchema(
+  CommunicationTemplateSchema,
+);
+export type CommunicationTemplatesResponse = z.infer<
+  typeof CommunicationTemplatesResponseSchema
+>;
+
+export const CommunicationLogSchema = z
+  .object({
+    id: z.string(),
+    tenantId: z.string().optional(),
+    templateId: z.string().nullable().optional(),
+    channel: CommunicationChannelSchema,
+    recipient: z.string(),
+    subject: z.string().nullable().optional(),
+    body: z.string().nullable().optional(),
+    status: CommunicationLogStatusSchema,
+    error: z.string().nullable().optional(),
+    sentAt: z.string().nullable().optional(),
+    createdAt: z.string(),
+  })
+  .passthrough();
+export type CommunicationLog = z.infer<typeof CommunicationLogSchema>;
+
+export const CommunicationLogsResponseSchema = paginatedSchema(
+  CommunicationLogSchema,
+);
+export type CommunicationLogsResponse = z.infer<
+  typeof CommunicationLogsResponseSchema
+>;
+
+export const CreateTemplateRequestSchema = z.object({
+  name: z
+    .string()
+    .min(1, "Name is required")
+    .max(200, "Name must be 200 characters or fewer"),
+  channel: CommunicationChannelSchema,
+  subject: z
+    .string()
+    .max(300, "Subject must be 300 characters or fewer")
+    .optional(),
+  bodyTemplate: z
+    .string()
+    .min(1, "Body is required")
+    .max(10000, "Body must be 10000 characters or fewer"),
+  variables: z.array(z.string()).optional(),
+  isActive: z.boolean().optional(),
+});
+export type CreateTemplateRequest = z.infer<typeof CreateTemplateRequestSchema>;
+
+export const UpdateTemplateRequestSchema = z.object({
+  name: z.string().min(1).max(200).optional(),
+  channel: CommunicationChannelSchema.optional(),
+  subject: z.string().max(300).nullable().optional(),
+  bodyTemplate: z.string().min(1).max(10000).optional(),
+  variables: z.array(z.string()).nullable().optional(),
+  isActive: z.boolean().optional(),
+});
+export type UpdateTemplateRequest = z.infer<typeof UpdateTemplateRequestSchema>;
+
+export const SendCommunicationRequestSchema = z.object({
+  templateId: z.string().optional(),
+  channel: CommunicationChannelSchema,
+  recipient: z.string().min(1, "Recipient is required"),
+  subject: z.string().optional(),
+  body: z.string().optional(),
+  variables: z.record(z.string(), z.string()).optional(),
+});
+export type SendCommunicationRequest = z.infer<
+  typeof SendCommunicationRequestSchema
+>;
