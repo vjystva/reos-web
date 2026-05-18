@@ -735,3 +735,77 @@ export const UpdateDealerRequestSchema = z.object({
   status: DealerStatusSchema.optional(),
 });
 export type UpdateDealerRequest = z.infer<typeof UpdateDealerRequestSchema>;
+
+// --- Reports & Exports (feat-0011) ---------------------------------------
+
+export const ReportTypeSchema = z.enum([
+  "leads",
+  "bookings",
+  "payments",
+  "site_visits",
+]);
+export type ReportType = z.infer<typeof ReportTypeSchema>;
+
+export const REPORT_TYPES: ReportType[] = [
+  "leads",
+  "bookings",
+  "payments",
+  "site_visits",
+];
+
+export const ReportFormatSchema = z.enum(["csv", "json"]);
+export type ReportFormat = z.infer<typeof ReportFormatSchema>;
+
+export const REPORT_FORMATS: ReportFormat[] = ["csv", "json"];
+
+export const ReportJobStatusSchema = z.enum([
+  "queued",
+  "processing",
+  "completed",
+  "failed",
+]);
+export type ReportJobStatus = z.infer<typeof ReportJobStatusSchema>;
+
+/**
+ * Body shape for `POST /api/reports` — generate a report job.
+ * `dateFrom` / `dateTo` are ISO date strings (YYYY-MM-DD); when both are present
+ * the refinement guarantees `dateTo >= dateFrom`.
+ */
+export const GenerateReportRequestSchema = z
+  .object({
+    reportType: ReportTypeSchema,
+    format: ReportFormatSchema,
+    dateFrom: z.string().optional(),
+    dateTo: z.string().optional(),
+    projectId: z.string().optional(),
+  })
+  .refine(
+    (data) => {
+      if (!data.dateFrom || !data.dateTo) return true;
+      return data.dateTo >= data.dateFrom;
+    },
+    {
+      message: "Date To must not be before Date From",
+      path: ["dateTo"],
+    },
+  );
+export type GenerateReportRequest = z.infer<typeof GenerateReportRequestSchema>;
+
+export const ReportJobSchema = z
+  .object({
+    jobId: z.string(),
+    status: ReportJobStatusSchema,
+    reportType: ReportTypeSchema,
+    format: ReportFormatSchema,
+    downloadUrl: z.string().optional(),
+    rowCount: z.number().optional(),
+    createdAt: z.string(),
+    completedAt: z.string().optional(),
+  })
+  .passthrough();
+export type ReportJob = z.infer<typeof ReportJobSchema>;
+
+export const ReportJobsResponseSchema = z.object({
+  jobs: z.array(ReportJobSchema),
+});
+export type ReportJobsResponse = z.infer<typeof ReportJobsResponseSchema>;
