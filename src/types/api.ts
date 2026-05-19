@@ -1019,3 +1019,128 @@ export const UpdateTicketStatusRequestSchema = z.object({
 export type UpdateTicketStatusRequest = z.infer<
   typeof UpdateTicketStatusRequestSchema
 >;
+
+// --- Workflows (feat-0014) ------------------------------------------------
+
+export const WorkflowTriggerTypeSchema = z.enum([
+  "lead_created",
+  "stage_changed",
+  "booking_created",
+  "payment_due",
+  "site_visit_scheduled",
+]);
+export type WorkflowTriggerType = z.infer<typeof WorkflowTriggerTypeSchema>;
+
+export const WORKFLOW_TRIGGER_TYPES: WorkflowTriggerType[] = [
+  "lead_created",
+  "stage_changed",
+  "booking_created",
+  "payment_due",
+  "site_visit_scheduled",
+];
+
+export const WorkflowActionTypeSchema = z.enum([
+  "send_notification",
+  "send_email",
+  "create_task",
+  "update_lead_stage",
+]);
+export type WorkflowActionType = z.infer<typeof WorkflowActionTypeSchema>;
+
+export const WORKFLOW_ACTION_TYPES: WorkflowActionType[] = [
+  "send_notification",
+  "send_email",
+  "create_task",
+  "update_lead_stage",
+];
+
+export const WorkflowActionSchema = z
+  .object({
+    actionType: WorkflowActionTypeSchema,
+    config: z.record(z.string(), z.unknown()).optional(),
+  })
+  .passthrough();
+export type WorkflowAction = z.infer<typeof WorkflowActionSchema>;
+
+export const WorkflowSchema = z
+  .object({
+    id: z.string(),
+    tenantId: z.string().optional(),
+    name: z.string(),
+    triggerType: WorkflowTriggerTypeSchema,
+    actions: z.array(WorkflowActionSchema),
+    isActive: z.boolean(),
+    createdAt: z.string().optional(),
+    updatedAt: z.string().optional(),
+  })
+  .passthrough();
+export type Workflow = z.infer<typeof WorkflowSchema>;
+
+export const WorkflowsResponseSchema = paginatedSchema(WorkflowSchema);
+export type WorkflowsResponse = z.infer<typeof WorkflowsResponseSchema>;
+
+export const WorkflowExecutionStatusSchema = z.enum([
+  "success",
+  "failed",
+  "partial",
+  "running",
+]);
+export type WorkflowExecutionStatus = z.infer<
+  typeof WorkflowExecutionStatusSchema
+>;
+
+export const WORKFLOW_EXECUTION_STATUSES: WorkflowExecutionStatus[] = [
+  "success",
+  "failed",
+  "partial",
+  "running",
+];
+
+export const WorkflowExecutionSchema = z
+  .object({
+    id: z.string(),
+    workflowId: z.string(),
+    status: WorkflowExecutionStatusSchema,
+    startedAt: z.string(),
+    finishedAt: z.string().nullable().optional(),
+    error: z.string().nullable().optional(),
+    triggeredBy: z.string().nullable().optional(),
+  })
+  .passthrough();
+export type WorkflowExecution = z.infer<typeof WorkflowExecutionSchema>;
+
+export const WorkflowExecutionsResponseSchema = paginatedSchema(
+  WorkflowExecutionSchema,
+);
+export type WorkflowExecutionsResponse = z.infer<
+  typeof WorkflowExecutionsResponseSchema
+>;
+
+export const CreateWorkflowActionRequestSchema = z.object({
+  actionType: WorkflowActionTypeSchema,
+  config: z.record(z.string(), z.unknown()).optional(),
+});
+export type CreateWorkflowActionRequest = z.infer<
+  typeof CreateWorkflowActionRequestSchema
+>;
+
+export const CreateWorkflowRequestSchema = z.object({
+  name: z
+    .string()
+    .min(1, "Name is required")
+    .max(200, "Name must be 200 characters or fewer"),
+  triggerType: WorkflowTriggerTypeSchema,
+  actions: z
+    .array(CreateWorkflowActionRequestSchema)
+    .min(1, "Add at least one action"),
+  isActive: z.boolean().optional(),
+});
+export type CreateWorkflowRequest = z.infer<typeof CreateWorkflowRequestSchema>;
+
+export const UpdateWorkflowRequestSchema = z.object({
+  name: z.string().min(1).max(200).optional(),
+  triggerType: WorkflowTriggerTypeSchema.optional(),
+  actions: z.array(CreateWorkflowActionRequestSchema).min(1).optional(),
+  isActive: z.boolean().optional(),
+});
+export type UpdateWorkflowRequest = z.infer<typeof UpdateWorkflowRequestSchema>;
