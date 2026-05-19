@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { LogOut, LayoutDashboard, ListChecks, Building2, CheckSquare, FileText, Users, BarChart2, MessageSquare } from "lucide-react";
+import { LogOut, LayoutDashboard, ListChecks, Building2, CheckSquare, FileText, Users, BarChart2, MessageSquare, LifeBuoy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -20,6 +20,7 @@ const NAV = [
   { href: "/dashboard/documents", label: "Documents", icon: FileText },
   { href: "/dashboard/reports", label: "Reports", icon: BarChart2 },
   { href: "/dashboard/communications", label: "Communications", icon: MessageSquare },
+  { href: "/dashboard/support", label: "Support", icon: LifeBuoy },
 ];
 
 export function AppShell({ children }: AppShellProps) {

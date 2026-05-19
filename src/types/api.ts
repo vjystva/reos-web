@@ -925,3 +925,97 @@ export const SendCommunicationRequestSchema = z.object({
 export type SendCommunicationRequest = z.infer<
   typeof SendCommunicationRequestSchema
 >;
+
+// --- Support Tickets (feat-0013) -----------------------------------------
+
+export const TicketStatusSchema = z.enum([
+  "open",
+  "in_progress",
+  "resolved",
+  "closed",
+]);
+export type TicketStatus = z.infer<typeof TicketStatusSchema>;
+
+export const TICKET_STATUSES: TicketStatus[] = [
+  "open",
+  "in_progress",
+  "resolved",
+  "closed",
+];
+
+export const TicketPrioritySchema = z.enum([
+  "low",
+  "medium",
+  "high",
+  "urgent",
+]);
+export type TicketPriority = z.infer<typeof TicketPrioritySchema>;
+
+export const TICKET_PRIORITIES: TicketPriority[] = [
+  "low",
+  "medium",
+  "high",
+  "urgent",
+];
+
+export const TicketReplySchema = z
+  .object({
+    id: z.string(),
+    ticketId: z.string().optional(),
+    authorId: z.string().nullable().optional(),
+    authorName: z.string().nullable().optional(),
+    body: z.string(),
+    createdAt: z.string(),
+  })
+  .passthrough();
+export type TicketReply = z.infer<typeof TicketReplySchema>;
+
+export const SupportTicketSchema = z
+  .object({
+    id: z.string(),
+    tenantId: z.string().optional(),
+    subject: z.string(),
+    description: z.string().nullable().optional(),
+    status: TicketStatusSchema,
+    priority: TicketPrioritySchema,
+    createdBy: z.string().nullable().optional(),
+    assigneeId: z.string().nullable().optional(),
+    replies: z.array(TicketReplySchema).optional(),
+    createdAt: z.string(),
+    updatedAt: z.string().optional(),
+  })
+  .passthrough();
+export type SupportTicket = z.infer<typeof SupportTicketSchema>;
+
+export const SupportTicketsResponseSchema = paginatedSchema(SupportTicketSchema);
+export type SupportTicketsResponse = z.infer<
+  typeof SupportTicketsResponseSchema
+>;
+
+export const CreateTicketRequestSchema = z.object({
+  subject: z
+    .string()
+    .min(1, "Subject is required")
+    .max(200, "Subject must be 200 characters or fewer"),
+  description: z
+    .string()
+    .min(1, "Description is required")
+    .max(5000, "Description must be 5000 characters or fewer"),
+  priority: TicketPrioritySchema,
+});
+export type CreateTicketRequest = z.infer<typeof CreateTicketRequestSchema>;
+
+export const CreateReplyRequestSchema = z.object({
+  body: z
+    .string()
+    .min(1, "Reply cannot be empty")
+    .max(5000, "Reply must be 5000 characters or fewer"),
+});
+export type CreateReplyRequest = z.infer<typeof CreateReplyRequestSchema>;
+
+export const UpdateTicketStatusRequestSchema = z.object({
+  status: TicketStatusSchema,
+});
+export type UpdateTicketStatusRequest = z.infer<
+  typeof UpdateTicketStatusRequestSchema
+>;
