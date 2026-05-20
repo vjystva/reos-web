@@ -1144,3 +1144,53 @@ export const UpdateWorkflowRequestSchema = z.object({
   isActive: z.boolean().optional(),
 });
 export type UpdateWorkflowRequest = z.infer<typeof UpdateWorkflowRequestSchema>;
+
+// --- Super Admin ----------------------------------------------------------
+
+export const TenantPlanSchema = z.enum(["starter", "professional", "enterprise"]);
+export type TenantPlan = z.infer<typeof TenantPlanSchema>;
+export const TENANT_PLANS: TenantPlan[] = ["starter", "professional", "enterprise"];
+
+export const TenantSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  slug: z.string(),
+  plan: TenantPlanSchema,
+  isActive: z.boolean(),
+  createdAt: z.string().optional(),
+  updatedAt: z.string().optional(),
+}).passthrough();
+export type Tenant = z.infer<typeof TenantSchema>;
+
+export const TenantsResponseSchema = paginatedSchema(TenantSchema);
+export type TenantsResponse = z.infer<typeof TenantsResponseSchema>;
+
+export const TenantStatsSchema = TenantSchema.extend({
+  leadsCount: z.number().optional(),
+  bookingsCount: z.number().optional(),
+  usersCount: z.number().optional(),
+}).passthrough();
+export type TenantStats = z.infer<typeof TenantStatsSchema>;
+
+export const SystemStatsSchema = z.object({
+  totalTenants: z.number(),
+  activeTenants: z.number(),
+  totalLeads: z.number(),
+  totalBookings: z.number(),
+  totalRevenue: z.number().optional(),
+}).passthrough();
+export type SystemStats = z.infer<typeof SystemStatsSchema>;
+
+export const CreateTenantRequestSchema = z.object({
+  name: z.string().min(1, "Name is required").max(200, "Name must be 200 characters or fewer"),
+  slug: z.string().min(1, "Slug is required").max(100, "Slug must be 100 characters or fewer").regex(/^[a-z0-9-]+$/, "Slug may only contain lowercase letters, numbers, and hyphens"),
+  plan: TenantPlanSchema,
+});
+export type CreateTenantRequest = z.infer<typeof CreateTenantRequestSchema>;
+
+export const UpdateTenantRequestSchema = z.object({
+  name: z.string().min(1).max(200).optional(),
+  plan: TenantPlanSchema.optional(),
+  isActive: z.boolean().optional(),
+});
+export type UpdateTenantRequest = z.infer<typeof UpdateTenantRequestSchema>;
