@@ -789,6 +789,32 @@ export const UpdateDealerRequestSchema = z.object({
 });
 export type UpdateDealerRequest = z.infer<typeof UpdateDealerRequestSchema>;
 
+// --- Dealer Performance (feat-0020) ---------------------------------------
+
+export const DealerPerformanceSchema = z.object({
+  dealerId: z.string(),
+  dealerName: z.string(),
+  leadCount: z.number().int().nonnegative(),
+  bookingCount: z.number().int().nonnegative(),
+  conversionRate: z.number(),
+  revenue: z.number(),
+});
+export type DealerPerformance = z.infer<typeof DealerPerformanceSchema>;
+
+export const DealerPerformanceResponseSchema = z.object({
+  performance: DealerPerformanceSchema,
+});
+export type DealerPerformanceResponse = z.infer<
+  typeof DealerPerformanceResponseSchema
+>;
+
+export const DealersPerformanceResponseSchema = z.object({
+  performance: z.array(DealerPerformanceSchema),
+});
+export type DealersPerformanceResponse = z.infer<
+  typeof DealersPerformanceResponseSchema
+>;
+
 // --- Reports & Exports (feat-0011) ---------------------------------------
 
 export const ReportTypeSchema = z.enum([
