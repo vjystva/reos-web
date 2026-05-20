@@ -537,6 +537,59 @@ export const TopDealersResponseSchema = z.object({
 });
 export type TopDealersResponse = z.infer<typeof TopDealersResponseSchema>;
 
+// --- Analytics deep-dive 2 (feat-0017) -----------------------------------
+
+export const LeadsBySourceItemSchema = z.object({
+  source: z.string(),
+  count: z.number().int().nonnegative(),
+});
+export type LeadsBySourceItem = z.infer<typeof LeadsBySourceItemSchema>;
+
+export const LeadsBySourceResponseSchema = z.object({
+  data: z.array(LeadsBySourceItemSchema),
+});
+export type LeadsBySourceResponse = z.infer<typeof LeadsBySourceResponseSchema>;
+
+export const BookingsByProjectItemSchema = z.object({
+  projectId: z.string(),
+  projectName: z.string(),
+  count: z.number().int().nonnegative(),
+});
+export type BookingsByProjectItem = z.infer<typeof BookingsByProjectItemSchema>;
+
+export const BookingsByProjectItemResponseSchema = z.object({
+  data: z.array(BookingsByProjectItemSchema),
+});
+export type BookingsByProjectItemResponse = z.infer<
+  typeof BookingsByProjectItemResponseSchema
+>;
+
+export const PaymentsByMonthItemSchema = z.object({
+  month: z.number().int().min(1).max(12),
+  year: z.number().int(),
+  totalAmount: z.number(),
+});
+export type PaymentsByMonthItem = z.infer<typeof PaymentsByMonthItemSchema>;
+
+export const PaymentsByMonthResponseSchema = z.object({
+  data: z.array(PaymentsByMonthItemSchema),
+});
+export type PaymentsByMonthResponse = z.infer<
+  typeof PaymentsByMonthResponseSchema
+>;
+
+export const ConversionFunnelStageSchema = z.object({
+  stage: z.string(),
+  count: z.number().int().nonnegative(),
+  conversionRate: z.number(),
+});
+export type ConversionFunnelStage = z.infer<typeof ConversionFunnelStageSchema>;
+
+export const ConversionFunnelSchema = z.object({
+  stages: z.array(ConversionFunnelStageSchema),
+});
+export type ConversionFunnel = z.infer<typeof ConversionFunnelSchema>;
+
 // --- Tasks (feat-0006) ---------------------------------------------------
 
 export const TaskStatusSchema = z.enum([
