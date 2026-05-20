@@ -31,8 +31,8 @@ export function useReportJobs() {
   return useQuery<ReportJobsResponse, Error>({
     queryKey: ["reports"],
     queryFn: fetchReportJobs,
-    staleTime: 10_000,
-    refetchInterval: 15_000,
+    staleTime: 25_000,
+    refetchInterval: 30_000,
     refetchIntervalInBackground: false,
   });
 }

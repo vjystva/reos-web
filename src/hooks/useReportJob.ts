@@ -32,8 +32,14 @@ export function useReportJob(jobId: string | null | undefined) {
     enabled: !!jobId,
     refetchInterval: (query) => {
       const status = query.state.data?.status;
-      if (status === "completed" || status === "failed") return false;
-      return 5_000;
+      if (
+        status === "queued" ||
+        status === "running" ||
+        status === "processing"
+      ) {
+        return 5_000;
+      }
+      return false;
     },
     refetchIntervalInBackground: false,
   });
