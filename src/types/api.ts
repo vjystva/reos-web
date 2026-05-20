@@ -1145,6 +1145,57 @@ export const UpdateWorkflowRequestSchema = z.object({
 });
 export type UpdateWorkflowRequest = z.infer<typeof UpdateWorkflowRequestSchema>;
 
+// --- Webhooks (feat-0016) ------------------------------------------------
+
+export const WebhookEndpointSchema = z
+  .object({
+    id: z.string(),
+    tenantId: z.string().optional(),
+    url: z.string().url(),
+    secret: z.string().optional(),
+    events: z.array(z.string()),
+    isActive: z.boolean(),
+    createdAt: z.string().optional(),
+  })
+  .passthrough();
+export type WebhookEndpoint = z.infer<typeof WebhookEndpointSchema>;
+
+export const WebhookEndpointsResponseSchema = paginatedSchema(WebhookEndpointSchema);
+export type WebhookEndpointsResponse = z.infer<typeof WebhookEndpointsResponseSchema>;
+
+export const WebhookDeliveryStatusSchema = z.enum(["pending", "success", "failed"]);
+export type WebhookDeliveryStatus = z.infer<typeof WebhookDeliveryStatusSchema>;
+
+export const WEBHOOK_DELIVERY_STATUSES: WebhookDeliveryStatus[] = [
+  "pending",
+  "success",
+  "failed",
+];
+
+export const WebhookDeliverySchema = z
+  .object({
+    id: z.string(),
+    endpointId: z.string(),
+    eventType: z.string(),
+    status: WebhookDeliveryStatusSchema,
+    attempts: z.number().int().nonnegative(),
+    responseStatus: z.number().int().nullable().optional(),
+    nextRetryAt: z.string().nullable().optional(),
+    createdAt: z.string(),
+  })
+  .passthrough();
+export type WebhookDelivery = z.infer<typeof WebhookDeliverySchema>;
+
+export const WebhookDeliveriesResponseSchema = paginatedSchema(WebhookDeliverySchema);
+export type WebhookDeliveriesResponse = z.infer<typeof WebhookDeliveriesResponseSchema>;
+
+export const RegisterEndpointRequestSchema = z.object({
+  url: z.string().url("Enter a valid URL"),
+  secret: z.string().min(16, "Secret must be at least 16 characters"),
+  events: z.array(z.string()).min(1, "Select at least one event"),
+});
+export type RegisterEndpointRequest = z.infer<typeof RegisterEndpointRequestSchema>;
+
 // --- Super Admin ----------------------------------------------------------
 
 export const TenantPlanSchema = z.enum(["starter", "professional", "enterprise"]);
