@@ -1298,3 +1298,105 @@ export const UpdateTenantRequestSchema = z.object({
   isActive: z.boolean().optional(),
 });
 export type UpdateTenantRequest = z.infer<typeof UpdateTenantRequestSchema>;
+
+// --- Customer Portal (feat-0018) ------------------------------------------
+
+export const BookingStatusSchema = z.enum([
+  "draft",
+  "confirmed",
+  "cancelled",
+  "completed",
+]);
+export type BookingStatus = z.infer<typeof BookingStatusSchema>;
+
+export const CustomerBookingSummarySchema = z.object({
+  id: z.string(),
+  bookingRef: z.string(),
+  status: BookingStatusSchema,
+  unitId: z.string(),
+  totalAmount: z.string().nullable(),
+  collectedAmount: z.string(),
+  createdAt: z.string(),
+}).passthrough();
+export type CustomerBookingSummary = z.infer<typeof CustomerBookingSummarySchema>;
+
+export const CustomerBookingsResponseSchema = z.array(CustomerBookingSummarySchema);
+export type CustomerBookingsResponse = z.infer<typeof CustomerBookingsResponseSchema>;
+
+export const MilestoneStatusSchema = z.enum([
+  "pending",
+  "due",
+  "paid",
+  "overdue",
+  "waived",
+]);
+export type MilestoneStatus = z.infer<typeof MilestoneStatusSchema>;
+
+export const MilestoneViewSchema = z.object({
+  id: z.string(),
+  sequenceOrder: z.number(),
+  name: z.string(),
+  percentage: z.string(),
+  amountDue: z.string(),
+  dueDate: z.string().nullable(),
+  constructionTrigger: z.string().nullable(),
+  status: MilestoneStatusSchema,
+  amountPaid: z.string(),
+}).passthrough();
+export type MilestoneView = z.infer<typeof MilestoneViewSchema>;
+
+export const PaymentScheduleViewSchema = z.object({
+  id: z.string(),
+  bookingId: z.string(),
+  totalAmount: z.string(),
+  notes: z.string().nullable(),
+  createdAt: z.string(),
+  milestones: z.array(MilestoneViewSchema),
+}).passthrough();
+export type PaymentScheduleView = z.infer<typeof PaymentScheduleViewSchema>;
+
+export const DocumentTypeSchema = z.enum([
+  "agreement",
+  "receipt",
+  "noc",
+  "brochure",
+  "other",
+]);
+export type DocumentType = z.infer<typeof DocumentTypeSchema>;
+
+export const CustomerDocumentSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  type: DocumentTypeSchema,
+  mimeType: z.string(),
+  url: z.string(),
+  resourceType: z.string(),
+  resourceId: z.string(),
+  createdAt: z.string(),
+}).passthrough();
+export type CustomerDocument = z.infer<typeof CustomerDocumentSchema>;
+
+export const CustomerDocumentsResponseSchema = z.array(CustomerDocumentSchema);
+export type CustomerDocumentsResponse = z.infer<typeof CustomerDocumentsResponseSchema>;
+
+export const VisitStatusSchema = z.enum([
+  "scheduled",
+  "confirmed",
+  "completed",
+  "cancelled",
+  "no_show",
+]);
+export type VisitStatus = z.infer<typeof VisitStatusSchema>;
+
+export const CustomerSiteVisitSchema = z.object({
+  id: z.string(),
+  projectId: z.string().nullable(),
+  unitId: z.string().nullable(),
+  scheduledAt: z.string(),
+  status: VisitStatusSchema,
+  notes: z.string().nullable(),
+}).passthrough();
+export type CustomerSiteVisit = z.infer<typeof CustomerSiteVisitSchema>;
+
+export const CustomerSiteVisitsResponseSchema = z.array(CustomerSiteVisitSchema);
+export type CustomerSiteVisitsResponse = z.infer<typeof CustomerSiteVisitsResponseSchema>;
