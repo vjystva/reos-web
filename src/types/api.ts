@@ -796,6 +796,9 @@ export const ReportTypeSchema = z.enum([
   "bookings",
   "payments",
   "site_visits",
+  "leads_summary",
+  "bookings_summary",
+  "revenue_summary",
 ]);
 export type ReportType = z.infer<typeof ReportTypeSchema>;
 
@@ -804,6 +807,9 @@ export const REPORT_TYPES: ReportType[] = [
   "bookings",
   "payments",
   "site_visits",
+  "leads_summary",
+  "bookings_summary",
+  "revenue_summary",
 ];
 
 export const ReportFormatSchema = z.enum(["csv", "json"]);
@@ -813,6 +819,7 @@ export const REPORT_FORMATS: ReportFormat[] = ["csv", "json"];
 
 export const ReportJobStatusSchema = z.enum([
   "queued",
+  "running",
   "processing",
   "completed",
   "failed",
@@ -850,6 +857,9 @@ export const ReportJobSchema = z
     status: ReportJobStatusSchema,
     reportType: ReportTypeSchema,
     format: ReportFormatSchema,
+    parameters: z.unknown().optional(),
+    result: z.unknown().nullable().optional(),
+    errorMessage: z.string().nullable().optional(),
     downloadUrl: z.string().optional(),
     rowCount: z.number().optional(),
     createdAt: z.string(),
@@ -862,6 +872,13 @@ export const ReportJobsResponseSchema = z.object({
   jobs: z.array(ReportJobSchema),
 });
 export type ReportJobsResponse = z.infer<typeof ReportJobsResponseSchema>;
+
+/** POST /api/reports/jobs/[id]/run — trigger a queued report job. */
+export const RunReportJobResponseSchema = z.object({
+  jobId: z.string(),
+  status: ReportJobStatusSchema,
+});
+export type RunReportJobResponse = z.infer<typeof RunReportJobResponseSchema>;
 
 // --- Communications (feat-0012) ------------------------------------------
 
