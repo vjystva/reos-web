@@ -5,7 +5,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 async function markRead(notificationId: string): Promise<void> {
   const res = await fetch(
     `/api/notifications/${encodeURIComponent(notificationId)}/read`,
-    { method: "POST" },
+    { method: "PATCH" },
   );
   if (!res.ok) {
     throw new Error(`mark_read_failed_${res.status}`);

@@ -37,7 +37,7 @@ export function useNotifications(params: UseNotificationsParams = {}) {
   return useQuery({
     queryKey: ["notifications", qs],
     queryFn: () => fetchNotifications(qs),
-    refetchInterval: 60_000,
+    refetchInterval: 30_000,
     refetchIntervalInBackground: false,
     staleTime: 25_000,
   });
