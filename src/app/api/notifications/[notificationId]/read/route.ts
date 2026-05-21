@@ -2,10 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { proxyFetch } from "@/lib/api";
 
 /**
- * POST /api/notifications/:notificationId/read — marks a single notification
+ * PATCH /api/notifications/:notificationId/read — marks a single notification
  * as read. Backend returns 204 or 200; we forward the upstream status.
  */
-export async function POST(
+export async function PATCH(
   req: NextRequest,
   ctx: { params: { notificationId: string } },
 ): Promise<NextResponse> {
@@ -17,7 +17,7 @@ export async function POST(
   const upstream = await proxyFetch(
     req,
     `/notifications/${encodeURIComponent(notificationId)}/read`,
-    { method: "POST" },
+    { method: "PATCH" },
   );
 
   if (upstream.status === 401) {
