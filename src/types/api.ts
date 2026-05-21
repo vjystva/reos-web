@@ -1342,6 +1342,21 @@ export const UpdateTenantRequestSchema = z.object({
 });
 export type UpdateTenantRequest = z.infer<typeof UpdateTenantRequestSchema>;
 
+// --- AI Price Prediction (feat-0022) --------------------------------------
+
+export const PricePredictionResponseSchema = z.object({
+  unitId: z.string(),
+  estimatedPrice: z.number(),
+  pricePerSqft: z.number(),
+  confidence: z.number(),
+  priceRange: z.object({
+    low: z.number(),
+    high: z.number(),
+  }),
+  adjustmentFactors: z.array(z.string()),
+});
+export type PricePredictionResponse = z.infer<typeof PricePredictionResponseSchema>;
+
 // --- Customer Portal (feat-0018) ------------------------------------------
 
 export const BookingStatusSchema = z.enum([
