@@ -1502,3 +1502,26 @@ export const CommissionSummarySchema = z.object({
   paidAmount: z.number(),
 });
 export type CommissionSummary = z.infer<typeof CommissionSummarySchema>;
+
+export const HoldStatusSchema = z.enum(['active', 'released', 'converted', 'expired']);
+export const HoldSchema = z.object({
+  id: z.string(),
+  tenantId: z.string().optional(),
+  unitId: z.string(),
+  leadId: z.string().nullable().optional(),
+  heldBy: z.string().nullable().optional(),
+  status: HoldStatusSchema,
+  expiresAt: z.string(),
+  expiredAt: z.string().nullable().optional(),
+  notes: z.string().nullable().optional(),
+  createdAt: z.string().optional(),
+  updatedAt: z.string().optional(),
+}).passthrough();
+export type Hold = z.infer<typeof HoldSchema>;
+export const HoldsResponseSchema = z.object({
+  data: z.array(HoldSchema),
+  total: z.number(),
+  page: z.number(),
+  limit: z.number(),
+});
+export type HoldsResponse = z.infer<typeof HoldsResponseSchema>;
