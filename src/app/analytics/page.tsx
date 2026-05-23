@@ -1,277 +1,158 @@
 "use client";
 
 import * as React from "react";
-import { useLeadsBySource } from "@/hooks/useLeadsBySource";
-import { useBookingsByProject } from "@/hooks/useBookingsByProject";
-import { usePaymentsByMonth } from "@/hooks/usePaymentsByMonth";
-import { useConversionFunnel } from "@/hooks/useConversionFunnel";
+import { useAnalyticsOverview } from "@/hooks/useAnalyticsOverview";
 
-const CURRENT_YEAR = new Date().getFullYear();
+// Date-range options (month granularity)
+const MONTH_OPTIONS = [
+  { label: "This month", value: "this_month" },
+  { label: "Last month", value: "last_month" },
+  { label: "Last 3 months", value: "last_3_months" },
+  { label: "Last 6 months", value: "last_6_months" },
+  { label: "This year", value: "this_year" },
+] as const;
 
-export default function AnalyticsDeepDivePage() {
-  const [from, setFrom] = React.useState("");
-  const [to, setTo] = React.useState("");
-  const [year, setYear] = React.useState(CURRENT_YEAR);
+type MonthOption = (typeof MONTH_OPTIONS)[number]["value"];
 
-  const dateRange =
-    from && to ? { from, to } : undefined;
+function SkeletonCard() {
+  return (
+    <div
+      role="status"
+      aria-label="Loading"
+      className="rounded-lg border border-slate-200 bg-white p-6"
+    >
+      <div className="mb-3 h-3 w-28 animate-pulse rounded bg-slate-200" />
+      <div className="mb-2 h-8 w-36 animate-pulse rounded bg-slate-200" />
+      <div className="h-3 w-20 animate-pulse rounded bg-slate-100" />
+    </div>
+  );
+}
 
-  const leadsBySourceQuery = useLeadsBySource(dateRange);
-  const bookingsByProjectQuery = useBookingsByProject();
-  const paymentsByMonthQuery = usePaymentsByMonth(year);
-  const conversionFunnelQuery = useConversionFunnel();
+interface KpiCardProps {
+  label: string;
+  value: string | number;
+  sub?: string;
+}
 
-  const yearOptions = React.useMemo(() => {
-    const years: number[] = [];
-    for (let y = CURRENT_YEAR; y >= CURRENT_YEAR - 4; y--) {
-      years.push(y);
-    }
-    return years;
-  }, []);
+function KpiCard({ label, value, sub }: KpiCardProps) {
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+      <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+        {label}
+      </p>
+      <p className="text-3xl font-bold text-slate-900">{value}</p>
+      {sub && <p className="mt-1 text-xs text-slate-400">{sub}</p>}
+    </div>
+  );
+}
+
+function formatInr(amount: number | null): string {
+  if (amount === null) return "—";
+  if (amount >= 1_00_00_000) {
+    return `₹${(amount / 1_00_00_000).toFixed(2)} Cr`;
+  }
+  if (amount >= 1_00_000) {
+    return `₹${(amount / 1_00_000).toFixed(2)} L`;
+  }
+  return `₹${amount.toLocaleString("en-IN")}`;
+}
+
+function formatCount(n: number | null): string {
+  if (n === null) return "—";
+  return n.toLocaleString("en-IN");
+}
+
+function computeConversionRate(
+  bookings: number | null,
+  leads: number | null,
+): string {
+  if (bookings === null || leads === null || leads === 0) return "—";
+  return `${((bookings / leads) * 100).toFixed(1)}%`;
+}
+
+export default function AnalyticsOverviewPage() {
+  const [dateRange, setDateRange] = React.useState<MonthOption>("this_month");
+
+  const { data, isLoading, isError, refetch } = useAnalyticsOverview();
 
   return (
     <div className="space-y-8 p-6">
-      <h1 className="text-xl font-semibold text-slate-900">
-        Analytics Deep Dive
-      </h1>
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <h1 className="text-xl font-semibold text-slate-900">
+          Analytics Overview
+        </h1>
 
-      {/* Date range selector */}
-      <section className="flex flex-wrap items-end gap-4">
+        {/* Date range selector */}
         <div className="flex flex-col gap-1">
           <label
-            htmlFor="date-from"
+            htmlFor="date-range"
             className="text-xs font-medium text-slate-600"
           >
-            From
+            Period
           </label>
-          <input
-            id="date-from"
-            type="text"
-            placeholder="YYYY-MM-DD"
-            value={from}
-            onChange={(e) => setFrom(e.target.value)}
+          <select
+            id="date-range"
+            value={dateRange}
+            onChange={(e) => setDateRange(e.target.value as MonthOption)}
             className="rounded border border-slate-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
-          />
-        </div>
-        <div className="flex flex-col gap-1">
-          <label
-            htmlFor="date-to"
-            className="text-xs font-medium text-slate-600"
           >
-            To
-          </label>
-          <input
-            id="date-to"
-            type="text"
-            placeholder="YYYY-MM-DD"
-            value={to}
-            onChange={(e) => setTo(e.target.value)}
-            className="rounded border border-slate-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
-          />
+            {MONTH_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
         </div>
-        {(from || to) && (
+      </div>
+
+      {/* KPI grid */}
+      {isLoading ? (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <SkeletonCard />
+          <SkeletonCard />
+          <SkeletonCard />
+          <SkeletonCard />
+        </div>
+      ) : isError ? (
+        <div className="rounded-lg border border-red-200 bg-red-50 p-6 text-center">
+          <p className="mb-3 text-sm text-red-600">
+            Failed to load analytics overview.
+          </p>
           <button
             type="button"
-            onClick={() => {
-              setFrom("");
-              setTo("");
-            }}
-            className="rounded border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
+            onClick={() => void refetch()}
+            className="rounded border border-red-300 px-4 py-1.5 text-sm text-red-600 hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-red-400"
           >
-            Clear
+            Retry
           </button>
-        )}
-      </section>
-
-      <div className="grid gap-8 lg:grid-cols-2">
-        {/* Leads by source */}
-        <section>
-          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">
-            Leads by Source
-          </h2>
-          {leadsBySourceQuery.isLoading ? (
-            <p className="text-sm text-slate-400">Loading…</p>
-          ) : leadsBySourceQuery.isError ? (
-            <p className="text-sm text-red-500">
-              Failed to load leads by source.{" "}
-              <button
-                type="button"
-                onClick={() => void leadsBySourceQuery.refetch()}
-                className="underline"
-              >
-                Retry
-              </button>
-            </p>
-          ) : !leadsBySourceQuery.data?.data.length ? (
-            <p className="text-sm text-slate-400">No data.</p>
-          ) : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b text-left text-xs text-slate-500">
-                  <th className="pb-1 pr-4 font-medium">Source</th>
-                  <th className="pb-1 font-medium">Count</th>
-                </tr>
-              </thead>
-              <tbody>
-                {leadsBySourceQuery.data.data.map((row) => (
-                  <tr key={row.source} className="border-b last:border-0">
-                    <td className="py-1.5 pr-4">{row.source}</td>
-                    <td className="py-1.5">{row.count}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </section>
-
-        {/* Bookings by project */}
-        <section>
-          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">
-            Bookings by Project
-          </h2>
-          {bookingsByProjectQuery.isLoading ? (
-            <p className="text-sm text-slate-400">Loading…</p>
-          ) : bookingsByProjectQuery.isError ? (
-            <p className="text-sm text-red-500">
-              Failed to load bookings by project.{" "}
-              <button
-                type="button"
-                onClick={() => void bookingsByProjectQuery.refetch()}
-                className="underline"
-              >
-                Retry
-              </button>
-            </p>
-          ) : !bookingsByProjectQuery.data?.data.length ? (
-            <p className="text-sm text-slate-400">No data.</p>
-          ) : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b text-left text-xs text-slate-500">
-                  <th className="pb-1 pr-4 font-medium">Project</th>
-                  <th className="pb-1 font-medium">Bookings</th>
-                  <th className="pb-1 pl-4 font-medium">Revenue</th>
-                </tr>
-              </thead>
-              <tbody>
-                {bookingsByProjectQuery.data.data.map((row) => (
-                  <tr key={row.projectId} className="border-b last:border-0">
-                    <td className="py-1.5 pr-4">{row.projectName}</td>
-                    <td className="py-1.5">{row.bookingCount}</td>
-                    <td className="py-1.5 pl-4">
-                      {row.totalRevenue.toLocaleString()}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </section>
-
-        {/* Payments by month */}
-        <section>
-          <div className="mb-3 flex items-center gap-3">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-              Payments by Month
-            </h2>
-            <select
-              value={year}
-              onChange={(e) => setYear(Number(e.target.value))}
-              className="rounded border border-slate-300 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
-            >
-              {yearOptions.map((y) => (
-                <option key={y} value={y}>
-                  {y}
-                </option>
-              ))}
-            </select>
-          </div>
-          {paymentsByMonthQuery.isLoading ? (
-            <p className="text-sm text-slate-400">Loading…</p>
-          ) : paymentsByMonthQuery.isError ? (
-            <p className="text-sm text-red-500">
-              Failed to load payments by month.{" "}
-              <button
-                type="button"
-                onClick={() => void paymentsByMonthQuery.refetch()}
-                className="underline"
-              >
-                Retry
-              </button>
-            </p>
-          ) : !paymentsByMonthQuery.data?.data.length ? (
-            <p className="text-sm text-slate-400">No data.</p>
-          ) : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b text-left text-xs text-slate-500">
-                  <th className="pb-1 pr-4 font-medium">Month</th>
-                  <th className="pb-1 font-medium">Total Amount</th>
-                </tr>
-              </thead>
-              <tbody>
-                {paymentsByMonthQuery.data.data.map((row) => (
-                  <tr
-                    key={`${row.year}-${row.month}`}
-                    className="border-b last:border-0"
-                  >
-                    <td className="py-1.5 pr-4">
-                      {row.year}-{String(row.month).padStart(2, "0")}
-                    </td>
-                    <td className="py-1.5">
-                      {row.totalAmount.toLocaleString()}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </section>
-
-        {/* Conversion funnel */}
-        <section>
-          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">
-            Conversion Funnel
-          </h2>
-          {conversionFunnelQuery.isLoading ? (
-            <p className="text-sm text-slate-400">Loading…</p>
-          ) : conversionFunnelQuery.isError ? (
-            <p className="text-sm text-red-500">
-              Failed to load conversion funnel.{" "}
-              <button
-                type="button"
-                onClick={() => void conversionFunnelQuery.refetch()}
-                className="underline"
-              >
-                Retry
-              </button>
-            </p>
-          ) : !conversionFunnelQuery.data?.stages.length ? (
-            <p className="text-sm text-slate-400">No data.</p>
-          ) : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b text-left text-xs text-slate-500">
-                  <th className="pb-1 pr-4 font-medium">Stage</th>
-                  <th className="pb-1 pr-4 font-medium">Count</th>
-                  <th className="pb-1 font-medium">Rate</th>
-                </tr>
-              </thead>
-              <tbody>
-                {conversionFunnelQuery.data.stages.map((stage) => (
-                  <tr key={stage.stage} className="border-b last:border-0">
-                    <td className="py-1.5 pr-4">{stage.stage}</td>
-                    <td className="py-1.5 pr-4">{stage.count}</td>
-                    <td className="py-1.5">
-                      {(stage.conversionRate * 100).toFixed(1)}%
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </section>
-      </div>
+        </div>
+      ) : (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <KpiCard
+            label="Total Leads This Month"
+            value={formatCount(data?.leadsThisMonth ?? null)}
+            sub={`${formatCount(data?.totalLeads ?? null)} total`}
+          />
+          <KpiCard
+            label="Bookings This Month"
+            value={formatCount(data?.activeBookings ?? null)}
+            sub={`${formatCount(data?.totalBookings ?? null)} total`}
+          />
+          <KpiCard
+            label="Revenue This Month"
+            value={formatInr(data?.collectedRevenue ?? null)}
+            sub={`${formatInr(data?.totalRevenue ?? null)} total`}
+          />
+          <KpiCard
+            label="Conversion Rate"
+            value={computeConversionRate(
+              data?.activeBookings ?? null,
+              data?.leadsThisMonth ?? null,
+            )}
+            sub="bookings / leads this month"
+          />
+        </div>
+      )}
     </div>
   );
 }
