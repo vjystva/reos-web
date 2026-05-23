@@ -50,6 +50,13 @@ describe("useCustomerBookings", () => {
     const { result } = renderHook(() => useCustomerBookings(), { wrapper: wrapper() });
     await waitFor(() => expect(result.current.isError).toBe(true));
   });
+
+  it("handles empty array response", async () => {
+    mockFetch([]);
+    const { result } = renderHook(() => useCustomerBookings(), { wrapper: wrapper() });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.data).toHaveLength(0);
+  });
 });
 
 describe("useCustomerBooking", () => {
