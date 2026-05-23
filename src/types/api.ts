@@ -154,6 +154,24 @@ export type Booking = z.infer<typeof BookingSchema>;
 export const BookingsResponseSchema = paginatedSchema(BookingSchema);
 export type BookingsResponse = z.infer<typeof BookingsResponseSchema>;
 
+// --- Booking detail (feat-0030) -------------------------------------------
+
+export const BookingDetailSchema = z.object({
+  id: z.string(),
+  bookingNumber: z.string().optional(),
+  status: z.string(),
+  unitId: z.string(),
+  leadId: z.string().optional(),
+  tenantId: z.string().optional(),
+  bookingAmount: z.string().nullable().optional(),
+  notes: z.string().nullable().optional(),
+  confirmedAt: z.string().nullable().optional(),
+  cancelledAt: z.string().nullable().optional(),
+  createdAt: z.string().optional(),
+  updatedAt: z.string().optional(),
+}).passthrough();
+export type BookingDetail = z.infer<typeof BookingDetailSchema>;
+
 // --- Projects -------------------------------------------------------------
 
 export const ProjectTypeSchema = z.enum(["apartment", "villa", "plotted"]);
@@ -317,7 +335,7 @@ export const PaymentModeSchema = z.enum([
 ]);
 export type PaymentMode = z.infer<typeof PaymentModeSchema>;
 
-export const MilestoneStatusSchema = z.enum(["paid", "overdue", "pending"]);
+export const MilestoneStatusSchema = z.enum(["pending", "due", "paid", "overdue", "waived"]);
 export type MilestoneStatus = z.infer<typeof MilestoneStatusSchema>;
 
 export const PaymentScheduleSchema = z
@@ -1385,14 +1403,6 @@ export type CustomerBookingSummary = z.infer<typeof CustomerBookingSummarySchema
 export const CustomerBookingsResponseSchema = z.array(CustomerBookingSummarySchema);
 export type CustomerBookingsResponse = z.infer<typeof CustomerBookingsResponseSchema>;
 
-export const MilestoneStatusSchema = z.enum([
-  "pending",
-  "due",
-  "paid",
-  "overdue",
-  "waived",
-]);
-export type MilestoneStatus = z.infer<typeof MilestoneStatusSchema>;
 
 export const MilestoneViewSchema = z.object({
   id: z.string(),
