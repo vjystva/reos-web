@@ -1472,3 +1472,33 @@ export type CustomerSiteVisit = z.infer<typeof CustomerSiteVisitSchema>;
 
 export const CustomerSiteVisitsResponseSchema = z.array(CustomerSiteVisitSchema);
 export type CustomerSiteVisitsResponse = z.infer<typeof CustomerSiteVisitsResponseSchema>;
+
+// --- Commissions (feat-0031) ----------------------------------------------
+
+export const CommissionStatusSchema = z.enum(["pending", "approved", "paid", "cancelled"]);
+export type CommissionStatus = z.infer<typeof CommissionStatusSchema>;
+
+export const CommissionSchema = z.object({
+  id: z.string(),
+  dealerId: z.string(),
+  bookingId: z.string(),
+  rate: z.string(),
+  amount: z.string(),
+  status: CommissionStatusSchema,
+  paidAt: z.string().nullable().optional(),
+  notes: z.string().nullable().optional(),
+  createdAt: z.string().optional(),
+}).passthrough();
+export type Commission = z.infer<typeof CommissionSchema>;
+
+export const CommissionsResponseSchema = z.array(CommissionSchema);
+export type CommissionsResponse = z.infer<typeof CommissionsResponseSchema>;
+
+export const CommissionSummarySchema = z.object({
+  dealerId: z.string(),
+  totalCommissions: z.number(),
+  totalAmount: z.number(),
+  pendingAmount: z.number(),
+  paidAmount: z.number(),
+});
+export type CommissionSummary = z.infer<typeof CommissionSummarySchema>;
