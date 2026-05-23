@@ -227,12 +227,16 @@ export const UnitSchema = z
     floor: z.number().int().optional(),
     bedrooms: z.number().int().optional(),
     area: z.number().optional(),
+    /** alias used by inventory page */
+    areaSqft: z.number().optional(),
     facing: z.string().nullable().optional(),
     isCorner: z.boolean().optional(),
     towerId: z.string().nullable().optional(),
     projectId: z.string().optional(),
     status: z.string().optional(),
     effectivePrice: z.number().nullable().optional(),
+    /** list price alias (nullable per spec) */
+    listPrice: z.number().nullable().optional(),
   })
   .passthrough();
 export type Unit = z.infer<typeof UnitSchema>;
