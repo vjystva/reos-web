@@ -19,8 +19,8 @@ export function useAnalyticsOverview() {
   return useQuery({
     queryKey: ["analytics", "overview"],
     queryFn: fetchAnalyticsOverview,
-    staleTime: 5 * 60_000,
-    refetchInterval: 5 * 60_000,
+    staleTime: 25_000,
+    refetchInterval: 25_000,
     refetchIntervalInBackground: false,
   });
 }
