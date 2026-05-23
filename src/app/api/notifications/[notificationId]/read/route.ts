@@ -1,13 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { proxyFetch } from "@/lib/api";
 
-/**
- * PATCH /api/notifications/:notificationId/read — marks a single notification
- * as read. Backend returns 204 or 200; we forward the upstream status.
- */
-export async function PATCH(
+type RouteCtx = { params: { notificationId: string } };
+
+async function handleRead(
   req: NextRequest,
-  ctx: { params: { notificationId: string } },
+  ctx: RouteCtx,
+  method: "PATCH" | "POST",
 ): Promise<NextResponse> {
   const { notificationId } = ctx.params;
   if (!notificationId) {
@@ -17,7 +16,7 @@ export async function PATCH(
   const upstream = await proxyFetch(
     req,
     `/notifications/${encodeURIComponent(notificationId)}/read`,
-    { method: "PATCH" },
+    { method },
   );
 
   if (upstream.status === 401) {
@@ -36,4 +35,25 @@ export async function PATCH(
   }
 
   return NextResponse.json({ ok: true }, { status: 200 });
+}
+
+/**
+ * PATCH /api/notifications/:notificationId/read — marks a single notification
+ * as read. Backend returns 204 or 200; we forward the upstream status.
+ */
+export async function PATCH(
+  req: NextRequest,
+  ctx: RouteCtx,
+): Promise<NextResponse> {
+  return handleRead(req, ctx, "PATCH");
+}
+
+/**
+ * POST /api/notifications/:notificationId/read — alternate verb for mark-read.
+ */
+export async function POST(
+  req: NextRequest,
+  ctx: RouteCtx,
+): Promise<NextResponse> {
+  return handleRead(req, ctx, "POST");
 }
