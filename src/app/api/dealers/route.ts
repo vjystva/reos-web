@@ -7,8 +7,12 @@ import {
 } from "@/types/api";
 
 /**
- * GET /api/dealers?isActive=true&region=X — proxies to GET /dealers.
- * Query string is forwarded verbatim. Response validated against
+ * GET /api/dealers?status=active&page=1&limit=20 — proxies to GET /dealers.
+ *
+ * Query string is forwarded verbatim, and the backend's ValidationPipe runs
+ * with `forbidNonWhitelisted: true`, so only `status` | `page` | `limit` are
+ * safe to send — anything else (there is no `region` column, and activity is
+ * `status`, not `isActive`) 400s the whole request. Response validated against
  * DealersResponseSchema; shape mismatch yields 502.
  */
 export async function GET(req: NextRequest): Promise<NextResponse> {

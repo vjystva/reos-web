@@ -1,17 +1,31 @@
 import { useQuery } from "@tanstack/react-query";
-import type { DealersResponse } from "@/types/api";
+import type { DealerStatus, DealersResponse } from "@/types/api";
 
+/**
+ * Query params accepted by `GET /dealers` (backend `QueryDealersDto`):
+ * `status`, `page`, `limit` — and nothing else. The backend runs a global
+ * ValidationPipe with `forbidNonWhitelisted: true`, so any extra param 400s
+ * the whole request. In particular there is no `region` column on `dealers`,
+ * and activity is modelled by `status` ('active' | 'inactive' | 'suspended'),
+ * not a boolean `isActive`.
+ */
 export interface UseDealersArgs {
-  isActive?: boolean;
-  region?: string;
+  status?: DealerStatus;
+  page?: number;
+  limit?: number;
+}
+
+function buildQuery(args: UseDealersArgs): string {
+  const qs = new URLSearchParams();
+  if (args.status) qs.set("status", args.status);
+  if (args.page != null) qs.set("page", String(args.page));
+  if (args.limit != null) qs.set("limit", String(args.limit));
+  return qs.toString();
 }
 
 async function fetchDealers(args: UseDealersArgs): Promise<DealersResponse> {
-  const qs = new URLSearchParams();
-  if (args.isActive !== undefined) qs.set("isActive", String(args.isActive));
-  if (args.region) qs.set("region", args.region);
-
-  const url = qs.toString() ? `/api/dealers?${qs.toString()}` : "/api/dealers";
+  const query = buildQuery(args);
+  const url = query ? `/api/dealers?${query}` : "/api/dealers";
   const res = await fetch(url);
   if (res.status === 401) {
     window.location.href = "/login";
@@ -27,10 +41,7 @@ async function fetchDealers(args: UseDealersArgs): Promise<DealersResponse> {
 }
 
 export function useDealers(args: UseDealersArgs = {}) {
-  const qs = new URLSearchParams();
-  if (args.isActive !== undefined) qs.set("isActive", String(args.isActive));
-  if (args.region) qs.set("region", args.region);
-  const key = qs.toString();
+  const key = buildQuery(args);
   return useQuery<DealersResponse, Error>({
     queryKey: ["dealers", key],
     queryFn: () => fetchDealers(args),

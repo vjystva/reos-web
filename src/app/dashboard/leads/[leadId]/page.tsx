@@ -14,6 +14,7 @@ import { LeadNotesForm } from "@/components/LeadNotesForm";
 import { TemperatureBadge } from "@/components/TemperatureBadge";
 import { ConvertLeadButton } from "@/components/ConvertLeadButton";
 import { useLead } from "@/hooks/useLead";
+import { useDealer } from "@/hooks/useDealer";
 import { useUpdateLeadMutation } from "@/hooks/useUpdateLeadMutation";
 import { formatDate, stageLabel } from "@/lib/utils";
 import {
@@ -55,6 +56,9 @@ export default function LeadDetailPage({ params }: { params: { leadId: string } 
   const { leadId } = params;
   const { data: lead, isLoading, isError, refetch } = useLead(leadId);
   const updateMutation = useUpdateLeadMutation(leadId);
+  // Channel-partner attribution (`leads.partner_id` → `dealers.id`). Disabled
+  // until the lead loads and actually carries an attribution.
+  const partnerQuery = useDealer(lead?.partnerId ?? null);
 
   const handleStageChange = (stage: LeadStage) => {
     updateMutation.mutate({ stage });
@@ -160,6 +164,17 @@ export default function LeadDetailPage({ params }: { params: { leadId: string } 
               <Field label="Assigned dealer">
                 {lead.assignedDealer?.name ?? lead.assignedTo ?? "—"}
               </Field>
+              {lead.partnerId ? (
+                <Field label="Channel partner">
+                  {partnerQuery.data
+                    ? [partnerQuery.data.name, partnerQuery.data.company]
+                        .filter(Boolean)
+                        .join(" · ")
+                    : partnerQuery.isLoading
+                      ? "Loading…"
+                      : lead.partnerId}
+                </Field>
+              ) : null}
               <Field label="Project" mono>
                 {lead.projectId ?? "—"}
               </Field>

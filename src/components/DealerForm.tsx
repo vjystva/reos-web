@@ -3,12 +3,23 @@
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import { ErrorBanner } from "@/components/ErrorBanner";
+import { KYC_LABEL } from "@/lib/partnerPerformance";
 import {
   CreateDealerRequestSchema,
+  DEALER_KYC_STATUSES,
+  DEFAULT_DEALER_KYC_STATUS,
   type CreateDealerRequest,
   type Dealer,
+  type DealerKycStatus,
 } from "@/types/api";
+
+/** Dense field label recipe — matches the lead + filter surfaces. */
+const LABEL = "block text-[11px] uppercase tracking-wider text-muted-foreground";
+/** Inline per-field validation message. */
+const FIELD_ERROR = "text-[11px] text-destructive";
+const OPTIONAL = "normal-case tracking-normal text-muted-foreground/70";
 
 interface DealerFormProps {
   /** When provided the form is in edit mode and pre-populates from this dealer. */
@@ -37,6 +48,10 @@ export function DealerForm({
   const [commissionRate, setCommissionRate] = React.useState<string>(
     initial?.commissionRate != null ? String(initial.commissionRate) : "",
   );
+  const [reraId, setReraId] = React.useState(initial?.reraId ?? "");
+  const [kycStatus, setKycStatus] = React.useState<DealerKycStatus>(
+    initial?.kycStatus ?? DEFAULT_DEALER_KYC_STATUS,
+  );
   const [fieldErrors, setFieldErrors] = React.useState<FieldErrors>({});
 
   function handleSubmit(e: React.FormEvent) {
@@ -44,6 +59,9 @@ export function DealerForm({
 
     const raw: Record<string, unknown> = {
       name: name.trim(),
+      // Always sent: the select is never empty, and 'pending' matches the DB
+      // default so a create with an untouched select is a no-op.
+      kycStatus,
     };
     if (email.trim()) raw.email = email.trim();
     if (phone.trim()) raw.phone = phone.trim();
@@ -51,6 +69,13 @@ export function DealerForm({
     if (commissionRate.trim()) {
       const n = Number(commissionRate);
       if (!Number.isNaN(n)) raw.commissionRate = n;
+    }
+    // Explicit null when the field is cleared on an existing dealer so the
+    // PATCH actually wipes `rera_id`; omitted entirely on a blank create.
+    if (reraId.trim()) {
+      raw.reraId = reraId.trim();
+    } else if (initial?.reraId) {
+      raw.reraId = null;
     }
 
     const result = CreateDealerRequestSchema.safeParse(raw);
@@ -68,14 +93,11 @@ export function DealerForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <form onSubmit={handleSubmit} className="space-y-3">
       {error && <ErrorBanner message={error} />}
 
       <div className="space-y-1">
-        <label
-          className="block text-sm font-medium text-slate-700"
-          htmlFor="dealer-name"
-        >
+        <label className={LABEL} htmlFor="dealer-name">
           Name
         </label>
         <Input
@@ -87,17 +109,12 @@ export function DealerForm({
           placeholder="Acme Realty"
           required
         />
-        {fieldErrors.name && (
-          <p className="text-xs text-red-600">{fieldErrors.name}</p>
-        )}
+        {fieldErrors.name && <p className={FIELD_ERROR}>{fieldErrors.name}</p>}
       </div>
 
       <div className="space-y-1">
-        <label
-          className="block text-sm font-medium text-slate-700"
-          htmlFor="dealer-email"
-        >
-          Email <span className="text-slate-400">(optional)</span>
+        <label className={LABEL} htmlFor="dealer-email">
+          Email <span className={OPTIONAL}>(optional)</span>
         </label>
         <Input
           id="dealer-email"
@@ -106,17 +123,12 @@ export function DealerForm({
           onChange={(e) => setEmail(e.target.value)}
           placeholder="contact@acme.example"
         />
-        {fieldErrors.email && (
-          <p className="text-xs text-red-600">{fieldErrors.email}</p>
-        )}
+        {fieldErrors.email && <p className={FIELD_ERROR}>{fieldErrors.email}</p>}
       </div>
 
       <div className="space-y-1">
-        <label
-          className="block text-sm font-medium text-slate-700"
-          htmlFor="dealer-phone"
-        >
-          Phone <span className="text-slate-400">(optional)</span>
+        <label className={LABEL} htmlFor="dealer-phone">
+          Phone <span className={OPTIONAL}>(optional)</span>
         </label>
         <Input
           id="dealer-phone"
@@ -124,18 +136,14 @@ export function DealerForm({
           value={phone}
           onChange={(e) => setPhone(e.target.value)}
           placeholder="+91 98xxx xxxxx"
+          className="font-mono tabular-nums"
         />
-        {fieldErrors.phone && (
-          <p className="text-xs text-red-600">{fieldErrors.phone}</p>
-        )}
+        {fieldErrors.phone && <p className={FIELD_ERROR}>{fieldErrors.phone}</p>}
       </div>
 
       <div className="space-y-1">
-        <label
-          className="block text-sm font-medium text-slate-700"
-          htmlFor="dealer-company"
-        >
-          Company <span className="text-slate-400">(optional)</span>
+        <label className={LABEL} htmlFor="dealer-company">
+          Company <span className={OPTIONAL}>(optional)</span>
         </label>
         <Input
           id="dealer-company"
@@ -145,17 +153,13 @@ export function DealerForm({
           placeholder="Acme Realty Pvt Ltd"
         />
         {fieldErrors.company && (
-          <p className="text-xs text-red-600">{fieldErrors.company}</p>
+          <p className={FIELD_ERROR}>{fieldErrors.company}</p>
         )}
       </div>
 
       <div className="space-y-1">
-        <label
-          className="block text-sm font-medium text-slate-700"
-          htmlFor="dealer-commission"
-        >
-          Commission rate (%){" "}
-          <span className="text-slate-400">(optional)</span>
+        <label className={LABEL} htmlFor="dealer-commission">
+          Commission rate (%) <span className={OPTIONAL}>(optional)</span>
         </label>
         <Input
           id="dealer-commission"
@@ -166,13 +170,55 @@ export function DealerForm({
           value={commissionRate}
           onChange={(e) => setCommissionRate(e.target.value)}
           placeholder="2.5"
+          className="font-mono tabular-nums"
         />
         {fieldErrors.commissionRate && (
-          <p className="text-xs text-red-600">{fieldErrors.commissionRate}</p>
+          <p className={FIELD_ERROR}>{fieldErrors.commissionRate}</p>
         )}
       </div>
 
-      <div className="flex justify-end gap-2 pt-2">
+      {/* Compliance pair — RERA registration id + KYC standing. */}
+      <div className="grid grid-cols-2 gap-2">
+        <div className="space-y-1">
+          <label className={LABEL} htmlFor="dealer-rera-id">
+            RERA id <span className={OPTIONAL}>(optional)</span>
+          </label>
+          <Input
+            id="dealer-rera-id"
+            type="text"
+            maxLength={64}
+            value={reraId}
+            onChange={(e) => setReraId(e.target.value)}
+            placeholder="UPRERAAGT10234"
+            className="font-mono"
+          />
+          {fieldErrors.reraId && (
+            <p className={FIELD_ERROR}>{fieldErrors.reraId}</p>
+          )}
+        </div>
+
+        <div className="space-y-1">
+          <label className={LABEL} htmlFor="dealer-kyc-status">
+            KYC status
+          </label>
+          <Select
+            id="dealer-kyc-status"
+            value={kycStatus}
+            onChange={(e) => setKycStatus(e.target.value as DealerKycStatus)}
+          >
+            {DEALER_KYC_STATUSES.map((s) => (
+              <option key={s} value={s}>
+                {KYC_LABEL[s]}
+              </option>
+            ))}
+          </Select>
+          {fieldErrors.kycStatus && (
+            <p className={FIELD_ERROR}>{fieldErrors.kycStatus}</p>
+          )}
+        </div>
+      </div>
+
+      <div className="flex justify-end gap-2 border-t border-border pt-3">
         <Button
           type="button"
           variant="outline"

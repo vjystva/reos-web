@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ErrorBanner } from "@/components/ErrorBanner";
 import { useLead } from "@/hooks/useLead";
+import { useDealer } from "@/hooks/useDealer";
 import { useQueryClient } from "@tanstack/react-query";
 import { stageLabel, formatDate } from "@/lib/utils";
 import { activityDotClass, activityLabel, nextLeadStage } from "@/lib/leadTone";
@@ -34,6 +35,8 @@ export function LeadSlideOver() {
   const open = Boolean(leadId);
 
   const { data: lead, isLoading, isError, error } = useLead(leadId ?? "");
+  // Channel-partner attribution — only fetched when the lead carries one.
+  const partnerQuery = useDealer(lead?.partnerId ?? null);
 
   async function handleRescore() {
     if (!leadId) return;
@@ -162,6 +165,17 @@ export function LeadSlideOver() {
                     {lead.assignedDealer?.name ?? "—"}
                   </dd>
                 </div>
+                {lead.partnerId ? (
+                  <div className="flex items-baseline justify-between gap-3 border-b border-border/60 pb-1">
+                    <dt className="text-[11px] uppercase tracking-wider text-muted-foreground">
+                      Channel partner
+                    </dt>
+                    <dd className="truncate text-xs text-foreground">
+                      {partnerQuery.data?.name ??
+                        (partnerQuery.isLoading ? "Loading…" : lead.partnerId)}
+                    </dd>
+                  </div>
+                ) : null}
                 <div className="flex items-baseline justify-between gap-3">
                   <dt className="text-[11px] uppercase tracking-wider text-muted-foreground">
                     Created

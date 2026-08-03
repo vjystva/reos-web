@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { ErrorBanner } from "@/components/ErrorBanner";
+import { useDealers } from "@/hooks/useDealers";
 import {
   CreateLeadRequestSchema,
   LEAD_SOURCES,
@@ -17,7 +18,11 @@ const SOURCE_LABELS: Record<string, string> = {
   phone: "Phone Call",
   csv_import: "CSV Import",
   third_party_api: "Agent / Referral",
+  channel_partner: "Channel Partner",
 };
+
+/** The one source that carries a partner attribution in the UI. */
+const PARTNER_SOURCE = "channel_partner";
 
 /** Dense field label recipe — matches the rest of the lead surfaces. */
 const LABEL = "block text-[11px] uppercase tracking-wider text-muted-foreground";
@@ -45,11 +50,18 @@ export function CreateLeadForm({
   const [phone, setPhone] = React.useState("");
   const [email, setEmail] = React.useState("");
   const [source, setSource] = React.useState<string>("phone");
+  const [partnerId, setPartnerId] = React.useState("");
   const [budgetMin, setBudgetMin] = React.useState("");
   const [budgetMax, setBudgetMax] = React.useState("");
   const [preferredLocation, setPreferredLocation] = React.useState("");
   const [projectInterest, setProjectInterest] = React.useState("");
   const [fieldErrors, setFieldErrors] = React.useState<FieldErrors>({});
+
+  const isPartnerSourced = source === PARTNER_SOURCE;
+  // Shares the roster cache with /dashboard/dealers (same ["dealers", ""] key),
+  // so opening this form rarely costs an extra round trip.
+  const dealersQuery = useDealers();
+  const dealers = dealersQuery.data?.dealers ?? [];
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -59,6 +71,9 @@ export function CreateLeadForm({
       phone: phone.trim(),
       source,
     };
+    // Attribution rides along only for a channel-partner-sourced lead; every
+    // other source submits without `partnerId` at all.
+    if (isPartnerSourced && partnerId) raw.partnerId = partnerId;
     if (email.trim()) raw.email = email.trim();
     if (budgetMin.trim()) raw.budgetMin = Number(budgetMin);
     if (budgetMax.trim()) raw.budgetMax = Number(budgetMax);
@@ -66,12 +81,20 @@ export function CreateLeadForm({
     if (projectInterest.trim()) raw.projectInterest = projectInterest.trim();
 
     const result = CreateLeadRequestSchema.safeParse(raw);
+    const errs: FieldErrors = {};
     if (!result.success) {
-      const errs: FieldErrors = {};
       for (const issue of result.error.issues) {
         const key = issue.path[0] as keyof CreateLeadRequest;
         if (!errs[key]) errs[key] = issue.message;
       }
+    }
+    // `partnerId` is optional on the wire (any source may carry an
+    // attribution) but mandatory in this form once the user picks
+    // channel_partner — a partner-sourced lead with no partner is meaningless.
+    if (isPartnerSourced && !partnerId) {
+      errs.partnerId = "Select the channel partner";
+    }
+    if (Object.keys(errs).length > 0 || !result.success) {
       setFieldErrors(errs);
       return;
     }
@@ -151,7 +174,11 @@ export function CreateLeadForm({
         <Select
           id="lead-source"
           value={source}
-          onChange={(e) => setSource(e.target.value)}
+          onChange={(e) => {
+            setSource(e.target.value);
+            // Drop any stale attribution when moving off channel_partner.
+            if (e.target.value !== PARTNER_SOURCE) setPartnerId("");
+          }}
         >
           {LEAD_SOURCES.map((s) => (
             <option key={s} value={s}>{SOURCE_LABELS[s] ?? s}</option>
@@ -159,6 +186,44 @@ export function CreateLeadForm({
         </Select>
         {fieldErrors.source && <p className={FIELD_ERROR}>{fieldErrors.source}</p>}
       </div>
+
+      {isPartnerSourced ? (
+        <div className="space-y-1">
+          <label className={LABEL} htmlFor="lead-partner">
+            Channel Partner
+          </label>
+          <Select
+            id="lead-partner"
+            value={partnerId}
+            onChange={(e) => setPartnerId(e.target.value)}
+            disabled={dealersQuery.isLoading || dealersQuery.isError}
+          >
+            <option value="">
+              {dealersQuery.isLoading
+                ? "Loading partners…"
+                : dealersQuery.isError
+                  ? "Partner list unavailable"
+                  : "Select a partner"}
+            </option>
+            {dealers.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.company ? `${d.name} · ${d.company}` : d.name}
+              </option>
+            ))}
+          </Select>
+          {fieldErrors.partnerId && (
+            <p className={FIELD_ERROR}>{fieldErrors.partnerId}</p>
+          )}
+          {!dealersQuery.isLoading &&
+          !dealersQuery.isError &&
+          dealers.length === 0 ? (
+            <p className="text-[11px] text-muted-foreground">
+              No channel partners on record yet — add one under Channel
+              partners first.
+            </p>
+          ) : null}
+        </div>
+      ) : null}
 
       <div className="grid grid-cols-2 gap-2">
         <div className="space-y-1">

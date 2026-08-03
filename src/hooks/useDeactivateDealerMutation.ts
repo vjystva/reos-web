@@ -1,14 +1,27 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import type { UpdateDealerRequest } from "@/types/api";
 
 interface DeactivateDealerVars {
   dealerId: string;
 }
 
+/**
+ * Deactivation is a status transition, not a delete.
+ *
+ * The backend has no `DELETE /dealers/:id` — the only DELETE under the dealers
+ * controller is `DELETE /dealers/:id/projects/:projectId` (unassign a project).
+ * Deactivating goes through `PATCH /dealers/:id` with `{ status: 'inactive' }`,
+ * which is exactly what `useUpdateDealerMutation` does; this hook is the named,
+ * intention-revealing wrapper around that one call.
+ */
+const DEACTIVATE_BODY: UpdateDealerRequest = { status: "inactive" };
+
 async function deactivateDealer(vars: DeactivateDealerVars): Promise<void> {
-  const res = await fetch(
-    `/api/dealers/${encodeURIComponent(vars.dealerId)}`,
-    { method: "DELETE" },
-  );
+  const res = await fetch(`/api/dealers/${encodeURIComponent(vars.dealerId)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(DEACTIVATE_BODY),
+  });
   if (res.status === 401) {
     window.location.href = "/login";
     throw new Error("unauthorized");

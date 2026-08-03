@@ -65,7 +65,7 @@ import {
  * tasks the API actually returned. Ask for a big page and surface the gap in
  * the header when the tenant has more than that.
  */
-const PAGE_LIMIT = 200;
+const PAGE_LIMIT = 100; // backend ListTasksDto caps `limit` at 100 — 200 400s
 
 type SheetMode = { kind: "closed" } | { kind: "create" } | { kind: "edit"; task: Task };
 

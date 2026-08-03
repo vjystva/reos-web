@@ -115,6 +115,13 @@ export const LeadSchema = z.object({
   assignedDealer: LeadDealerSchema.nullable().optional(),
   assignedTo: z.string().nullable().optional(),
   projectId: z.string().nullable().optional(),
+  /**
+   * Channel partner (`dealers.id`) that SOURCED this lead — backend migration
+   * 032 / `LeadResponseDto.partnerId`. Distinct id-space from
+   * `assignedDealer` (which is an internal `users.id` working the lead).
+   * Null/absent for leads with no partner attribution.
+   */
+  partnerId: z.string().nullable().optional(),
   notes: z.string().nullable().optional(),
   createdAt: z.string(),
   updatedAt: z.string().optional(),
@@ -136,10 +143,25 @@ export const UpdateLeadRequestSchema = z.object({
   stage: LeadStageSchema.optional(),
   notes: z.string().max(2000, "Notes must be 2000 characters or fewer").optional(),
   assignedTo: z.string().optional(),
+  // Channel-partner attribution — `UpdateLeadDto.partnerId` (uuid, optional).
+  // Explicit null clears the attribution; omitted leaves it untouched.
+  partnerId: z.string().uuid("Select a channel partner").nullable().optional(),
 });
 export type UpdateLeadRequest = z.infer<typeof UpdateLeadRequestSchema>;
 
-export const LEAD_SOURCES = ["web_form", "whatsapp", "phone", "csv_import", "third_party_api"] as const;
+/**
+ * Mirrors backend `LEAD_SOURCES` in src/leads/pipeline.constants.ts.
+ * `channel_partner` (migration 032) marks a lead sourced by a firm from the
+ * dealers directory; the firm itself is carried on `partnerId`.
+ */
+export const LEAD_SOURCES = [
+  "web_form",
+  "whatsapp",
+  "phone",
+  "csv_import",
+  "third_party_api",
+  "channel_partner",
+] as const;
 export type LeadSource = typeof LEAD_SOURCES[number];
 export const LeadSourceSchema = z.enum(LEAD_SOURCES);
 
@@ -154,6 +176,10 @@ export const CreateLeadRequestSchema = z.object({
   preferredLocation: z.string().max(200).optional(),
   projectInterest: z.string().max(200).optional(),
   projectId: z.string().uuid().optional(),
+  // Channel-partner attribution — `CreateLeadDto.partnerId` (uuid, optional).
+  // Typically sent with source = "channel_partner", but any source may carry
+  // an attribution, so it stays independent of `source` at the schema level.
+  partnerId: z.string().uuid("Select a channel partner").optional(),
 });
 export type CreateLeadRequest = z.infer<typeof CreateLeadRequestSchema>;
 
@@ -925,6 +951,9 @@ export const DEALER_KYC_STATUSES: DealerKycStatus[] = [
   "rejected",
 ];
 
+/** Backend DB default for a freshly created dealer (`DEFAULT_DEALER_KYC_STATUS`). */
+export const DEFAULT_DEALER_KYC_STATUS: DealerKycStatus = "pending";
+
 export const DealerSchema = z
   .object({
     id: z.string(),
@@ -969,6 +998,17 @@ export const CreateDealerRequestSchema = z.object({
     .min(0, "Commission must be 0 or greater")
     .max(100, "Commission must be 100 or less")
     .optional(),
+  // Write side of the RERA / KYC pair the read schema already carries.
+  // Backend `CreateDealerDto`: reraId (free-form, max 64), kycStatus (DB
+  // default 'pending' when omitted). Null is accepted alongside undefined —
+  // `@IsOptional()` skips null, and the insert does `dto.reraId ?? null` — so
+  // one form can emit the same shape for create and for "clear on edit".
+  reraId: z
+    .string()
+    .max(64, "RERA id must be 64 characters or fewer")
+    .nullable()
+    .optional(),
+  kycStatus: DealerKycStatusSchema.optional(),
 });
 export type CreateDealerRequest = z.infer<typeof CreateDealerRequestSchema>;
 
@@ -983,6 +1023,14 @@ export const UpdateDealerRequestSchema = z.object({
     .max(100, "Commission must be 100 or less")
     .optional(),
   status: DealerStatusSchema.optional(),
+  // `UpdateDealerDto.reraId` is `string | null` — an explicit null clears the
+  // registration id, an omitted key leaves it alone.
+  reraId: z
+    .string()
+    .max(64, "RERA id must be 64 characters or fewer")
+    .nullable()
+    .optional(),
+  kycStatus: DealerKycStatusSchema.optional(),
 });
 export type UpdateDealerRequest = z.infer<typeof UpdateDealerRequestSchema>;
 
@@ -1656,6 +1704,19 @@ export type Commission = z.infer<typeof CommissionSchema>;
 
 export const CommissionsResponseSchema = z.array(CommissionSchema);
 export type CommissionsResponse = z.infer<typeof CommissionsResponseSchema>;
+
+/**
+ * Body for `PATCH /commissions/:id/status` — mirrors backend
+ * `UpdateCommissionStatusDto` ({ status, notes? }). `paidAt` is stamped by the
+ * backend when status becomes 'paid'; it is never sent by the client.
+ */
+export const UpdateCommissionStatusRequestSchema = z.object({
+  status: CommissionStatusSchema,
+  notes: z.string().max(2000, "Notes must be 2000 characters or fewer").optional(),
+});
+export type UpdateCommissionStatusRequest = z.infer<
+  typeof UpdateCommissionStatusRequestSchema
+>;
 
 export const CommissionSummarySchema = z.object({
   dealerId: z.string(),

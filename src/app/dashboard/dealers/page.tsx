@@ -8,7 +8,6 @@ import { StatusPill } from "@/components/StatusPill";
 import { ErrorBanner } from "@/components/ErrorBanner";
 import { PollIndicator } from "@/components/PollIndicator";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -42,14 +41,23 @@ import {
   type PartnerRow,
 } from "@/lib/partnerPerformance";
 import { inr } from "@/lib/utils";
-import type { CreateDealerRequest, Dealer } from "@/types/api";
+import {
+  DEALER_STATUSES,
+  type CreateDealerRequest,
+  type Dealer,
+  type DealerStatus,
+} from "@/types/api";
 
 type SheetMode =
   | { kind: "closed" }
   | { kind: "create" }
   | { kind: "edit"; dealer: Dealer };
 
-type StatusFilter = "all" | "active" | "inactive";
+/**
+ * Mirrors backend `DEALER_STATUSES` ('active' | 'inactive' | 'suspended') plus
+ * an "all" sentinel meaning "send no `status` param at all".
+ */
+type StatusFilter = "all" | DealerStatus;
 
 /** "—" for absent values so a sparse row still reads as a row. */
 function dash(value: React.ReactNode | null | undefined): React.ReactNode {
@@ -201,21 +209,11 @@ function PartnerTable({
 
 export default function DealersPage() {
   const [statusFilter, setStatusFilter] = React.useState<StatusFilter>("all");
-  const [regionFilter, setRegionFilter] = React.useState("");
   const [sheet, setSheet] = React.useState<SheetMode>({ kind: "closed" });
   const [formError, setFormError] = React.useState<string | null>(null);
 
-  // isActive maps to status: "active" → true, "inactive" → false, "all" → undef
-  const isActive =
-    statusFilter === "active"
-      ? true
-      : statusFilter === "inactive"
-        ? false
-        : undefined;
-
   const dealersQuery = useDealers({
-    isActive,
-    region: regionFilter.trim() || undefined,
+    status: statusFilter === "all" ? undefined : statusFilter,
   });
   const performanceQuery = useDealersPerformance({
     sortBy: "revenue",
@@ -346,22 +344,6 @@ export default function DealersPage() {
         <div className="space-y-1">
           <label
             className="block text-[11px] uppercase tracking-wider text-muted-foreground"
-            htmlFor="filter-region"
-          >
-            Region
-          </label>
-          <Input
-            id="filter-region"
-            type="text"
-            value={regionFilter}
-            onChange={(e) => setRegionFilter(e.target.value)}
-            placeholder="Search by region"
-            className="w-56"
-          />
-        </div>
-        <div className="space-y-1">
-          <label
-            className="block text-[11px] uppercase tracking-wider text-muted-foreground"
             htmlFor="filter-status"
           >
             Status
@@ -373,17 +355,17 @@ export default function DealersPage() {
             className="w-40"
           >
             <option value="all">All</option>
-            <option value="active">Active</option>
-            <option value="inactive">Inactive</option>
+            {DEALER_STATUSES.map((s) => (
+              <option key={s} value={s}>
+                {dealerStatusLabel(s)}
+              </option>
+            ))}
           </Select>
         </div>
-        {regionFilter || statusFilter !== "all" ? (
+        {statusFilter !== "all" ? (
           <button
             type="button"
-            onClick={() => {
-              setRegionFilter("");
-              setStatusFilter("all");
-            }}
+            onClick={() => setStatusFilter("all")}
             className="pb-1.5 text-[11px] font-medium text-primary hover:underline"
           >
             Clear filters

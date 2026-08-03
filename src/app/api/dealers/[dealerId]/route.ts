@@ -97,7 +97,13 @@ export async function PATCH(
 }
 
 /**
- * DELETE /api/dealers/[dealerId] — deactivate dealer.
+ * DELETE /api/dealers/[dealerId] — DEAD ROUTE, no caller.
+ *
+ * The backend exposes no `DELETE /dealers/:id` (its only dealer DELETE is
+ * `/dealers/:id/projects/:projectId`), so this proxy can only ever return the
+ * upstream 404. Deactivation now goes through PATCH above with
+ * `{ status: 'inactive' }` (see `useDeactivateDealerMutation`). Kept only so
+ * no external caller 405s; do not wire new UI to it.
  */
 export async function DELETE(
   req: NextRequest,

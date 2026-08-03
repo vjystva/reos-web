@@ -122,7 +122,7 @@ describe("useUpdateDealerMutation", () => {
     await act(async () => {
       await result.current.mutateAsync({
         dealerId: "dealer-42",
-        body: { region: "Bengaluru South" },
+        body: { company: "Bengaluru South Realty" },
       });
     });
 
@@ -131,7 +131,7 @@ describe("useUpdateDealerMutation", () => {
     const [url, init] = mockFetch.mock.calls[0];
     expect(url).toBe("/api/dealers/dealer-42");
     expect(init.method).toBe("PATCH");
-    expect(JSON.parse(init.body)).toEqual({ region: "Bengaluru South" });
+    expect(JSON.parse(init.body)).toEqual({ company: "Bengaluru South Realty" });
 
     const calls = invalidateSpy.mock.calls.map((c) => JSON.stringify(c[0]));
     expect(calls.some((c) => c.includes('"dealers"'))).toBe(true);
@@ -151,7 +151,7 @@ describe("useDeactivateDealerMutation", () => {
     client.clear();
   });
 
-  test("success DELETEs /api/dealers/:id and invalidates dealers query", async () => {
+  test("success PATCHes status=inactive to /api/dealers/:id and invalidates dealers query", async () => {
     const mockFetch = jest.fn().mockResolvedValue({
       ok: true,
       status: 200,
@@ -172,7 +172,9 @@ describe("useDeactivateDealerMutation", () => {
 
     const [url, init] = mockFetch.mock.calls[0];
     expect(url).toBe("/api/dealers/dealer-9");
-    expect(init.method).toBe("DELETE");
+    // Backend has no DELETE /dealers/:id — deactivation is a status PATCH.
+    expect(init.method).toBe("PATCH");
+    expect(JSON.parse(init.body)).toEqual({ status: "inactive" });
 
     const calls = invalidateSpy.mock.calls.map((c) => JSON.stringify(c[0]));
     expect(calls.some((c) => c.includes('"dealers"'))).toBe(true);

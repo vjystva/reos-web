@@ -28,9 +28,10 @@ import {
 import { DealerForm } from "@/components/DealerForm";
 import { useDealer } from "@/hooks/useDealer";
 import { useDealerPerformance } from "@/hooks/useDealerPerformance";
-import { useCommissions } from "@/hooks/useCommissions";
+import { useCommissions, formatCommissionStatus } from "@/hooks/useCommissions";
 import { useUpdateDealerMutation } from "@/hooks/useUpdateDealerMutation";
 import { useDeactivateDealerMutation } from "@/hooks/useDeactivateDealerMutation";
+import { useUpdateCommissionStatusMutation } from "@/hooks/useUpdateCommissionStatusMutation";
 import {
   commissionTotalsByDealer,
   conversionPercent,
@@ -40,11 +41,35 @@ import {
   kycTone,
 } from "@/lib/partnerPerformance";
 import { formatDate, inr } from "@/lib/utils";
-import type { CreateDealerRequest } from "@/types/api";
+import type { CommissionStatus, CreateDealerRequest } from "@/types/api";
 
 interface PageProps {
   params: { dealerId: string };
 }
+
+/**
+ * Commission workflow — the forward moves offered per current status.
+ *
+ * Backend `PATCH /commissions/:id/status` accepts any of the four states with
+ * no transition guard, so the guard lives here: a paid or cancelled row is
+ * terminal (no actions), pending can be approved or cancelled, approved can be
+ * paid or cancelled.
+ */
+const COMMISSION_NEXT_STATES: Record<
+  CommissionStatus,
+  { status: CommissionStatus; label: string; destructive?: boolean }[]
+> = {
+  pending: [
+    { status: "approved", label: "Approve" },
+    { status: "cancelled", label: "Cancel", destructive: true },
+  ],
+  approved: [
+    { status: "paid", label: "Mark paid" },
+    { status: "cancelled", label: "Cancel", destructive: true },
+  ],
+  paid: [],
+  cancelled: [],
+};
 
 /** Definition-list fact — same recipe as the dashboard snapshot panel. */
 function Fact({
@@ -82,10 +107,14 @@ export default function DealerDetailPage({ params }: PageProps) {
   const commissionsQuery = useCommissions(dealerId);
   const updateMutation = useUpdateDealerMutation();
   const deactivateMutation = useDeactivateDealerMutation();
+  const commissionStatusMutation = useUpdateCommissionStatusMutation();
 
   const [editOpen, setEditOpen] = React.useState(false);
   const [formError, setFormError] = React.useState<string | null>(null);
   const [deactivateError, setDeactivateError] = React.useState<string | null>(
+    null,
+  );
+  const [commissionError, setCommissionError] = React.useState<string | null>(
     null,
   );
 
@@ -107,6 +136,31 @@ export default function DealerDetailPage({ params }: PageProps) {
     } catch (err) {
       setFormError(
         err instanceof Error ? err.message : "Failed to update dealer",
+      );
+    }
+  }
+
+  async function handleCommissionStatus(
+    commissionId: string,
+    status: CommissionStatus,
+  ) {
+    if (
+      status === "cancelled" &&
+      typeof window !== "undefined" &&
+      !window.confirm(
+        "Cancel this commission? It stops counting towards payouts due.",
+      )
+    ) {
+      return;
+    }
+    setCommissionError(null);
+    try {
+      await commissionStatusMutation.mutateAsync({ commissionId, status });
+    } catch (err) {
+      setCommissionError(
+        err instanceof Error
+          ? err.message
+          : "Failed to update commission status",
       );
     }
   }
@@ -314,38 +368,90 @@ export default function DealerDetailPage({ params }: PageProps) {
                 booking sourced by this partner is confirmed.
               </p>
             ) : (
-              <Table wrapperClassName="border-0">
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Booking</TableHead>
-                    <TableHead numeric>Rate</TableHead>
-                    <TableHead numeric>Amount</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Paid on</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {commissions.map((c) => (
-                    <TableRow key={c.id}>
-                      <TableCell className="whitespace-nowrap font-mono text-muted-foreground">
-                        {c.bookingId.slice(0, 8)}…
-                      </TableCell>
-                      <TableCell numeric>{c.rate}%</TableCell>
-                      <TableCell numeric className="text-right font-mono font-semibold tabular-nums">
-                        {inr(Number.parseFloat(c.amount))}
-                      </TableCell>
-                      <TableCell>
-                        <StatusPill tone={statusTone(c.status)}>
-                          {c.status}
-                        </StatusPill>
-                      </TableCell>
-                      <TableCell className="whitespace-nowrap text-muted-foreground">
-                        {c.paidAt ? formatDate(c.paidAt) : "—"}
-                      </TableCell>
+              <>
+                {commissionError ? (
+                  <div className="mb-2">
+                    <ErrorBanner message={commissionError} />
+                  </div>
+                ) : null}
+                <Table wrapperClassName="border-0">
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Booking</TableHead>
+                      <TableHead numeric>Rate</TableHead>
+                      <TableHead numeric>Amount</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Paid on</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {commissions.map((c) => {
+                      const actions = COMMISSION_NEXT_STATES[c.status] ?? [];
+                      const busy =
+                        commissionStatusMutation.isPending &&
+                        commissionStatusMutation.variables?.commissionId ===
+                          c.id;
+                      return (
+                        <TableRow key={c.id}>
+                          <TableCell className="whitespace-nowrap font-mono text-muted-foreground">
+                            {c.bookingId.slice(0, 8)}…
+                          </TableCell>
+                          <TableCell numeric>{c.rate}%</TableCell>
+                          <TableCell numeric className="text-right font-mono font-semibold tabular-nums">
+                            {inr(Number.parseFloat(c.amount))}
+                          </TableCell>
+                          <TableCell>
+                            <StatusPill tone={statusTone(c.status)}>
+                              {formatCommissionStatus(c.status)}
+                            </StatusPill>
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap text-muted-foreground">
+                            {c.paidAt ? formatDate(c.paidAt) : "—"}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {actions.length === 0 ? (
+                              <span className="text-muted-foreground">—</span>
+                            ) : (
+                              <span className="inline-flex justify-end gap-1">
+                                {actions.map((a) => (
+                                  <Button
+                                    key={a.status}
+                                    size="sm"
+                                    variant={
+                                      a.destructive ? "ghost" : "outline"
+                                    }
+                                    className={
+                                      a.destructive
+                                        ? "h-6 px-2 text-[11px] text-destructive hover:text-destructive"
+                                        : "h-6 px-2 text-[11px]"
+                                    }
+                                    disabled={
+                                      commissionStatusMutation.isPending
+                                    }
+                                    onClick={() =>
+                                      void handleCommissionStatus(
+                                        c.id,
+                                        a.status,
+                                      )
+                                    }
+                                  >
+                                    {busy &&
+                                    commissionStatusMutation.variables
+                                      ?.status === a.status
+                                      ? "Saving…"
+                                      : a.label}
+                                  </Button>
+                                ))}
+                              </span>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </>
             )}
           </CardContent>
         </Card>

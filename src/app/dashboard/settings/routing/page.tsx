@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusPill } from "@/components/StatusPill";
+import { roleLabel, type AppRole } from "@/components/nav-config";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useDealers } from "@/hooks/useDealers";
 import { useProjects } from "@/hooks/useProjects";
@@ -36,6 +37,9 @@ const SOURCE_LABELS: Record<LeadSource, string> = {
   phone: "Phone Call",
   csv_import: "CSV Import",
   third_party_api: "Agent / Referral",
+  // Widened by backend migration 032 on both `leads.source` and
+  // `lead_routing_rules.source`, so it is routable like any other source.
+  channel_partner: "Channel Partner",
 };
 
 const MODE_DESCRIPTIONS: Record<RoutingMode, string> = {
@@ -133,7 +137,7 @@ function StrategyToggle({
 export default function LeadRoutingSettingsPage() {
   const modeQuery = useRoutingMode();
   const rulesQuery = useLeadRoutingRules();
-  const projectsQuery = useProjects({ pageSize: 200 });
+  const projectsQuery = useProjects({ pageSize: 100 }); // backend caps pageSize at 100 — 200 400s
   const usersQuery = useUsers();
   const dealersQuery = useDealers();
   const currentUserQuery = useCurrentUser();
@@ -170,16 +174,31 @@ export default function LeadRoutingSettingsPage() {
     if (serverMode) setMode(serverMode);
   }, [serverMode]);
 
-  // The backend validates targetDealerId against `users` (role='dealer') — the
-  // `dealers` partner directory is a separate id-space — so the option list is
-  // built from users and only *labelled* from the dealer directory.
+  // The backend now validates targetDealerId against ROUTING_TARGET_ROLES —
+  // dealer, sales_agent, sales_manager, builder_admin — not just 'dealer',
+  // so a rule can route a channel_partner-sourced lead to a sales owner
+  // rather than only ever to another dealer. `dealers` (the partner
+  // directory) is a separate id-space from `users`, so it's only consulted
+  // to prettify a dealer-role option's label with their firm name.
   const dealerOptions = React.useMemo(() => {
     const nameById = new Map(
       (dealersQuery.data?.dealers ?? []).map((d) => [d.id, d.name]),
     );
+    const ROUTABLE_ROLES = new Set([
+      "dealer",
+      "sales_agent",
+      "sales_manager",
+      "builder_admin",
+    ]);
     const options = (usersQuery.data?.data ?? [])
-      .filter((u) => u.role === "dealer")
-      .map((u) => ({ id: u.id, label: nameById.get(u.id) ?? u.email }));
+      .filter((u) => ROUTABLE_ROLES.has(u.role))
+      .map((u) => ({
+        id: u.id,
+        label:
+          u.role === "dealer"
+            ? `${nameById.get(u.id) ?? u.email} · Dealer`
+            : `${u.email} · ${roleLabel(u.role as AppRole)}`,
+      }));
     // Keep any already-assigned owner selectable even if it is not in the list
     // (e.g. a deactivated account), so opening the page cannot silently drop it.
     const known = new Set(options.map((o) => o.id));
