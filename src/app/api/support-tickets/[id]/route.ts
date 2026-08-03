@@ -38,6 +38,13 @@ export async function GET(
       { status: 502 },
     );
   }
+
+  // Backend returns { ticket: {...}, replies: [] } — flatten to a single object
+  if (json !== null && typeof json === "object" && "ticket" in (json as object)) {
+    const envelope = json as { ticket: unknown; replies?: unknown[] };
+    json = { ...(envelope.ticket as object), replies: envelope.replies ?? [] };
+  }
+
   const parsed = SupportTicketSchema.safeParse(json);
   if (!parsed.success) {
     return NextResponse.json(

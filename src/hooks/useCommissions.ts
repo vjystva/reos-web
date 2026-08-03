@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { CommissionsResponseSchema, CommissionSummarySchema, type Commission, type CommissionSummary } from "@/types/api";
+import { CommissionsResponseSchema, type Commission } from "@/types/api";
 
 export function formatCommissionStatus(status: string): string {
   const map: Record<string, string> = { pending: "Pending", approved: "Approved", paid: "Paid", cancelled: "Cancelled" };

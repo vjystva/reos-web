@@ -9,8 +9,20 @@ import { PipelineFilters } from "@/components/PipelineFilters";
 import { LeadSlideOver } from "@/components/LeadSlideOver";
 import { PollIndicator } from "@/components/PollIndicator";
 import { ErrorBanner } from "@/components/ErrorBanner";
+import { PageHeader } from "@/components/PageHeader";
+import { CreateLeadForm } from "@/components/CreateLeadForm";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { useLeads } from "@/hooks/useLeads";
+import { useCreateLeadMutation } from "@/hooks/useCreateLeadMutation";
+import type { CreateLeadRequest } from "@/types/api";
 
 const PAGE_SIZE = 10;
 
@@ -21,13 +33,24 @@ function ViewToggle({
   view: "table" | "kanban";
   setView: (v: "table" | "kanban") => void;
 }) {
+  const item = (active: boolean) =>
+    `h-6 rounded-sm px-2 text-[11px] font-medium uppercase tracking-wider transition-colors ${
+      active
+        ? "bg-primary text-primary-foreground"
+        : "text-muted-foreground hover:text-foreground"
+    }`;
+
   return (
-    <div role="group" aria-label="View toggle" className="inline-flex rounded-md border border-slate-300 bg-white">
+    <div
+      role="group"
+      aria-label="View toggle"
+      className="inline-flex items-center gap-0.5 rounded-md border border-border bg-card p-0.5"
+    >
       <button
         type="button"
         onClick={() => setView("table")}
         aria-pressed={view === "table"}
-        className={`px-3 py-1.5 text-sm ${view === "table" ? "bg-slate-900 text-white" : "text-slate-700"}`}
+        className={item(view === "table")}
       >
         Table
       </button>
@@ -35,7 +58,7 @@ function ViewToggle({
         type="button"
         onClick={() => setView("kanban")}
         aria-pressed={view === "kanban"}
-        className={`px-3 py-1.5 text-sm ${view === "kanban" ? "bg-slate-900 text-white" : "text-slate-700"}`}
+        className={item(view === "kanban")}
       >
         Kanban
       </button>
@@ -66,10 +89,14 @@ function Pagination({
   return (
     <nav
       aria-label="Pagination"
-      className="flex items-center justify-between text-sm text-slate-600"
+      className="flex items-center justify-between text-[11px] text-muted-foreground"
     >
       <span>
-        Page {page} of {totalPages} · {total} leads
+        Page{" "}
+        <span className="font-mono tabular-nums text-foreground">{page}</span> of{" "}
+        <span className="font-mono tabular-nums text-foreground">{totalPages}</span>{" "}
+        · <span className="font-mono tabular-nums text-foreground">{total}</span>{" "}
+        leads
       </span>
       <div className="flex gap-1">
         <Button
@@ -100,6 +127,9 @@ function PipelineContent() {
   const pathname = usePathname();
   const params = useSearchParams();
 
+  const [sheetOpen, setSheetOpen] = React.useState(false);
+  const [formError, setFormError] = React.useState<string | null>(null);
+
   const stage = params.get("stage") ?? "";
   const temperature = params.get("temperature") ?? "";
   const dealer = params.get("dealer") ?? "";
@@ -119,31 +149,48 @@ function PipelineContent() {
   const leadsQuery = useLeads({
     stage,
     temperature,
-    dealer,
-    search,
-    sort,
-    order,
+    assignedDealerId: dealer,
+    q: search,
+    sortBy: sort,
+    sortOrder: order,
     page,
     pageSize: PAGE_SIZE,
   });
 
+  const createMutation = useCreateLeadMutation();
+
+  async function handleCreate(data: CreateLeadRequest) {
+    setFormError(null);
+    try {
+      await createMutation.mutateAsync(data);
+      setSheetOpen(false);
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : "Failed to create lead");
+    }
+  }
+
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold text-slate-900">Lead Pipeline</h1>
-        <PollIndicator
-          isFetching={leadsQuery.isFetching}
-          isError={leadsQuery.isError}
-          dataUpdatedAt={leadsQuery.dataUpdatedAt}
-          onRetry={() => leadsQuery.refetch()}
-        />
-      </div>
+    <div className="space-y-3">
+      <PageHeader
+        title="Lead Pipeline"
+        subtitle={`${leadsQuery.data?.total ?? 0} leads total`}
+        actions={
+          <>
+            <PollIndicator
+              isFetching={leadsQuery.isFetching}
+              isError={leadsQuery.isError}
+              dataUpdatedAt={leadsQuery.dataUpdatedAt}
+              onRetry={() => leadsQuery.refetch()}
+            />
+            <ViewToggle view={view} setView={setView} />
+            <Button onClick={() => { setSheetOpen(true); setFormError(null); }}>
+              + Add lead
+            </Button>
+          </>
+        }
+      />
 
       <PipelineFilters />
-
-      <div className="flex justify-end">
-        <ViewToggle view={view} setView={setView} />
-      </div>
 
       {leadsQuery.isError ? (
         <ErrorBanner
@@ -170,6 +217,25 @@ function PipelineContent() {
       )}
 
       <LeadSlideOver />
+
+      <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
+        <SheetContent className="sm:max-w-md overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle>Add new lead</SheetTitle>
+            <SheetDescription>
+              Capture customer details and lead source.
+            </SheetDescription>
+          </SheetHeader>
+          <div className="mt-2">
+            <CreateLeadForm
+              isSubmitting={createMutation.isPending}
+              error={formError}
+              onSubmit={(data) => void handleCreate(data)}
+              onCancel={() => setSheetOpen(false)}
+            />
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
@@ -179,8 +245,9 @@ export default function PipelinePage() {
     <Suspense
       fallback={
         <div className="space-y-3">
-          <div className="h-8 w-48 animate-pulse rounded bg-slate-200" />
-          <div className="h-64 animate-pulse rounded-md bg-white" />
+          <Skeleton className="h-8 w-48" />
+          <Skeleton className="h-12 w-full" />
+          <Skeleton className="h-64 w-full" />
         </div>
       }
     >

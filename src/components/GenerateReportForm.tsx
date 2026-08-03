@@ -1,7 +1,7 @@
 "use client";
 import * as React from "react";
 import { z } from "zod";
-import { REPORT_TYPES, type ReportType, type GenerateReportRequest } from "@/types/api";
+import { type ReportType, type GenerateReportRequest } from "@/types/api";
 import { ReportTypeSelect } from "@/components/ReportTypeSelect";
 import { useGenerateReportMutation } from "@/hooks/useGenerateReportMutation";
 

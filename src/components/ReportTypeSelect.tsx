@@ -2,14 +2,7 @@
 
 import * as React from "react";
 import { Select } from "@/components/ui/select";
-import { REPORT_TYPES, type ReportType } from "@/types/api";
-
-const REPORT_TYPE_LABELS: Record<ReportType, string> = {
-  leads: "Leads",
-  bookings: "Bookings",
-  payments: "Payments",
-  site_visits: "Site Visits",
-};
+import { REPORT_TYPES, REPORT_TYPE_LABELS, type ReportType } from "@/types/api";
 
 interface ReportTypeSelectProps {
   id?: string;

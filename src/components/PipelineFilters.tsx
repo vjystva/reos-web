@@ -2,11 +2,15 @@
 
 import * as React from "react";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
+import { Search } from "lucide-react";
 import { Select } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { LEAD_STAGES } from "@/types/api";
 import { stageLabel } from "@/lib/utils";
+
+const FIELD_LABEL =
+  "text-[11px] uppercase tracking-wider text-muted-foreground";
 
 export function PipelineFilters() {
   const router = useRouter();
@@ -50,9 +54,26 @@ export function PipelineFilters() {
   const anyActive = stage || temperature || dealer || search;
 
   return (
-    <div className="flex flex-wrap items-end gap-2">
-      <label className="flex flex-col gap-1 text-xs text-slate-600">
-        <span>Stage</span>
+    <div className="flex flex-wrap items-end gap-2 rounded-md border border-border bg-card p-2">
+      <label className="flex min-w-[13rem] flex-1 flex-col gap-1">
+        <span className={FIELD_LABEL}>Search</span>
+        <span className="relative block">
+          <Search
+            className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground"
+            aria-hidden="true"
+          />
+          <Input
+            value={localSearch}
+            onChange={(e) => setLocalSearch(e.target.value)}
+            placeholder="Name or phone"
+            aria-label="Search leads by name or phone"
+            className="pl-7"
+          />
+        </span>
+      </label>
+
+      <label className="flex flex-col gap-1">
+        <span className={FIELD_LABEL}>Stage</span>
         <Select
           value={stage}
           onChange={(e) => setParam("stage", e.target.value)}
@@ -67,13 +88,14 @@ export function PipelineFilters() {
           ))}
         </Select>
       </label>
-      <label className="flex flex-col gap-1 text-xs text-slate-600">
-        <span>Temperature</span>
+
+      <label className="flex flex-col gap-1">
+        <span className={FIELD_LABEL}>Temperature</span>
         <Select
           value={temperature}
           onChange={(e) => setParam("temperature", e.target.value)}
           aria-label="Filter by temperature"
-          className="w-36"
+          className="w-32"
         >
           <option value="">All temps</option>
           <option value="hot">Hot</option>
@@ -81,26 +103,18 @@ export function PipelineFilters() {
           <option value="cold">Cold</option>
         </Select>
       </label>
-      <label className="flex flex-col gap-1 text-xs text-slate-600">
-        <span>Dealer</span>
+
+      <label className="flex flex-col gap-1">
+        <span className={FIELD_LABEL}>Dealer</span>
         <Input
           value={dealer}
           onChange={(e) => setParam("dealer", e.target.value)}
           placeholder="Dealer id"
           aria-label="Filter by dealer id"
-          className="w-44"
+          className="w-40 font-mono"
         />
       </label>
-      <label className="flex flex-col gap-1 text-xs text-slate-600">
-        <span>Search</span>
-        <Input
-          value={localSearch}
-          onChange={(e) => setLocalSearch(e.target.value)}
-          placeholder="Name or phone"
-          aria-label="Search leads by name or phone"
-          className="w-56"
-        />
-      </label>
+
       {anyActive ? (
         <Button variant="ghost" size="sm" onClick={clearAll}>
           Clear all

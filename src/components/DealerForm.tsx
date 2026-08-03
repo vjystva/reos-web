@@ -33,7 +33,7 @@ export function DealerForm({
   const [name, setName] = React.useState(initial?.name ?? "");
   const [email, setEmail] = React.useState(initial?.email ?? "");
   const [phone, setPhone] = React.useState(initial?.phone ?? "");
-  const [region, setRegion] = React.useState(initial?.region ?? "");
+  const [company, setCompany] = React.useState(initial?.company ?? "");
   const [commissionRate, setCommissionRate] = React.useState<string>(
     initial?.commissionRate != null ? String(initial.commissionRate) : "",
   );
@@ -47,7 +47,7 @@ export function DealerForm({
     };
     if (email.trim()) raw.email = email.trim();
     if (phone.trim()) raw.phone = phone.trim();
-    if (region.trim()) raw.region = region.trim();
+    if (company.trim()) raw.company = company.trim();
     if (commissionRate.trim()) {
       const n = Number(commissionRate);
       if (!Number.isNaN(n)) raw.commissionRate = n;
@@ -133,19 +133,19 @@ export function DealerForm({
       <div className="space-y-1">
         <label
           className="block text-sm font-medium text-slate-700"
-          htmlFor="dealer-region"
+          htmlFor="dealer-company"
         >
-          Region <span className="text-slate-400">(optional)</span>
+          Company <span className="text-slate-400">(optional)</span>
         </label>
         <Input
-          id="dealer-region"
+          id="dealer-company"
           type="text"
-          value={region}
-          onChange={(e) => setRegion(e.target.value)}
-          placeholder="Bengaluru South"
+          value={company}
+          onChange={(e) => setCompany(e.target.value)}
+          placeholder="Acme Realty Pvt Ltd"
         />
-        {fieldErrors.region && (
-          <p className="text-xs text-red-600">{fieldErrors.region}</p>
+        {fieldErrors.company && (
+          <p className="text-xs text-red-600">{fieldErrors.company}</p>
         )}
       </div>
 

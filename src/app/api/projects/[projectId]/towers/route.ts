@@ -45,6 +45,12 @@ export async function GET(
       { status: 502 },
     );
   }
+
+  // Backend returns a bare array; wrap into paginated envelope.
+  if (Array.isArray(json)) {
+    json = { data: json, total: (json as unknown[]).length };
+  }
+
   const parsed = TowersResponseSchema.safeParse(json);
   if (!parsed.success) {
     return NextResponse.json(

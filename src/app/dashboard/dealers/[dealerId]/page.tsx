@@ -3,8 +3,21 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { PageHeader } from "@/components/PageHeader";
+import { MetricCard } from "@/components/MetricCard";
+import { StatusPill, statusTone } from "@/components/StatusPill";
+import { ErrorBanner } from "@/components/ErrorBanner";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import {
   Sheet,
   SheetContent,
@@ -12,22 +25,61 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { ErrorBanner } from "@/components/ErrorBanner";
-import { DealerStatusBadge } from "@/components/DealerStatusBadge";
 import { DealerForm } from "@/components/DealerForm";
 import { useDealer } from "@/hooks/useDealer";
+import { useDealerPerformance } from "@/hooks/useDealerPerformance";
+import { useCommissions } from "@/hooks/useCommissions";
 import { useUpdateDealerMutation } from "@/hooks/useUpdateDealerMutation";
 import { useDeactivateDealerMutation } from "@/hooks/useDeactivateDealerMutation";
+import {
+  commissionTotalsByDealer,
+  conversionPercent,
+  dealerStatusLabel,
+  dealerStatusTone,
+  kycLabel,
+  kycTone,
+} from "@/lib/partnerPerformance";
+import { formatDate, inr } from "@/lib/utils";
 import type { CreateDealerRequest } from "@/types/api";
 
 interface PageProps {
   params: { dealerId: string };
 }
 
+/** Definition-list fact — same recipe as the dashboard snapshot panel. */
+function Fact({
+  label,
+  value,
+  mono = true,
+}: {
+  label: string;
+  value: React.ReactNode;
+  mono?: boolean;
+}) {
+  return (
+    <div className="min-w-0">
+      <dt className="truncate text-[11px] uppercase tracking-wider text-muted-foreground">
+        {label}
+      </dt>
+      <dd
+        className={
+          mono
+            ? "mt-0.5 truncate font-mono text-sm font-semibold tabular-nums text-foreground"
+            : "mt-0.5 truncate text-sm font-medium text-foreground"
+        }
+      >
+        {value ?? <span className="text-muted-foreground">—</span>}
+      </dd>
+    </div>
+  );
+}
+
 export default function DealerDetailPage({ params }: PageProps) {
   const { dealerId } = params;
   const router = useRouter();
   const { data: dealer, isLoading, isError, refetch } = useDealer(dealerId);
+  const performanceQuery = useDealerPerformance(dealerId);
+  const commissionsQuery = useCommissions(dealerId);
   const updateMutation = useUpdateDealerMutation();
   const deactivateMutation = useDeactivateDealerMutation();
 
@@ -35,6 +87,16 @@ export default function DealerDetailPage({ params }: PageProps) {
   const [formError, setFormError] = React.useState<string | null>(null);
   const [deactivateError, setDeactivateError] = React.useState<string | null>(
     null,
+  );
+
+  const commissions = React.useMemo(
+    () => commissionsQuery.data ?? [],
+    [commissionsQuery.data],
+  );
+
+  const commissionTotals = React.useMemo(
+    () => commissionTotalsByDealer(commissions).get(dealerId) ?? null,
+    [commissions, dealerId],
   );
 
   async function handleUpdate(data: CreateDealerRequest) {
@@ -71,88 +133,58 @@ export default function DealerDetailPage({ params }: PageProps) {
 
   if (isLoading) {
     return (
-      <div className="space-y-4 p-2">
-        <Skeleton className="h-8 w-48" />
-        <Skeleton className="h-4 w-64" />
-        <Skeleton className="h-4 w-48" />
+      <div className="space-y-3">
+        <Skeleton className="h-8 w-56" />
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-16 w-full" />
+          ))}
+        </div>
+        <Skeleton className="h-48 w-full" />
       </div>
     );
   }
 
   if (isError || !dealer) {
     return (
-      <div className="p-2">
+      <div className="space-y-3">
         <ErrorBanner
           message="Could not load dealer details."
           onRetry={() => void refetch()}
         />
-        <div className="mt-3">
-          <Link
-            href="/dashboard/dealers"
-            className="text-sm text-slate-600 hover:underline"
-          >
-            ← Back to dealers
-          </Link>
-        </div>
+        <Link
+          href="/dashboard/dealers"
+          className="text-xs font-medium text-primary hover:underline"
+        >
+          ← Back to channel partners
+        </Link>
       </div>
     );
   }
 
+  const perf = performanceQuery.data;
+  const conversion = conversionPercent(perf?.conversionRate);
+
   return (
-    <div className="max-w-2xl space-y-6">
-      <div className="flex items-center gap-3">
-        <Link
-          href="/dashboard/dealers"
-          className="text-sm text-slate-600 hover:underline"
-        >
-          ← Dealers
-        </Link>
-        <span className="text-slate-300">/</span>
-        <h1 className="text-xl font-semibold text-slate-900">{dealer.name}</h1>
-      </div>
-
-      {deactivateError ? <ErrorBanner message={deactivateError} /> : null}
-
-      <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="flex items-start justify-between gap-2">
-          <div className="space-y-3">
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-medium text-slate-700">Status</span>
-              <DealerStatusBadge status={dealer.status} />
-            </div>
-            {dealer.email ? (
-              <div className="text-sm">
-                <span className="text-slate-500">Email: </span>
-                <span className="text-slate-900">{dealer.email}</span>
-              </div>
-            ) : null}
-            {dealer.phone ? (
-              <div className="text-sm">
-                <span className="text-slate-500">Phone: </span>
-                <span className="text-slate-900">{dealer.phone}</span>
-              </div>
-            ) : null}
-            {dealer.region ? (
-              <div className="text-sm">
-                <span className="text-slate-500">Region: </span>
-                <span className="text-slate-900">{dealer.region}</span>
-              </div>
-            ) : null}
-            {dealer.commissionRate != null ? (
-              <div className="text-sm">
-                <span className="text-slate-500">Commission rate: </span>
-                <span className="font-semibold text-slate-900">
-                  {dealer.commissionRate}%
-                </span>
-              </div>
-            ) : null}
-          </div>
-          <div className="flex flex-col gap-2">
-            <Button variant="outline" onClick={() => setEditOpen(true)}>
+    <div className="space-y-4">
+      <PageHeader
+        title={dealer.name}
+        subtitle={
+          dealer.company
+            ? `${dealer.company} · channel partner`
+            : "Channel partner"
+        }
+        actions={
+          <>
+            <Button asChild variant="ghost" size="sm">
+              <Link href="/dashboard/dealers">← Partners</Link>
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
               Edit
             </Button>
             <Button
               variant="destructive"
+              size="sm"
               onClick={handleDeactivate}
               disabled={
                 deactivateMutation.isPending || dealer.status === "inactive"
@@ -160,9 +192,164 @@ export default function DealerDetailPage({ params }: PageProps) {
             >
               {deactivateMutation.isPending ? "Deactivating…" : "Deactivate"}
             </Button>
-          </div>
+          </>
+        }
+      />
+
+      {deactivateError ? <ErrorBanner message={deactivateError} /> : null}
+
+      {/* Performance tiles */}
+      <section aria-label="Partner performance">
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+          <MetricCard
+            label="Leads sourced"
+            value={perf?.leadCount ?? null}
+            isLoading={performanceQuery.isLoading}
+            isError={performanceQuery.isError}
+          />
+          <MetricCard
+            label="Bookings"
+            value={perf?.bookingCount ?? null}
+            hint={
+              conversion != null ? `${conversion.toFixed(1)}% conversion` : undefined
+            }
+            isLoading={performanceQuery.isLoading}
+            isError={performanceQuery.isError}
+          />
+          <MetricCard
+            label="Revenue sourced"
+            value={perf?.revenue != null ? inr(perf.revenue) : null}
+            isLoading={performanceQuery.isLoading}
+            isError={performanceQuery.isError}
+          />
+          <MetricCard
+            label="Payout due"
+            value={
+              commissionsQuery.isError ? null : inr(commissionTotals?.due ?? 0)
+            }
+            hint="pending + approved"
+            isLoading={commissionsQuery.isLoading}
+            isError={commissionsQuery.isError}
+          />
+          <MetricCard
+            label="Paid out"
+            value={
+              commissionsQuery.isError ? null : inr(commissionTotals?.paid ?? 0)
+            }
+            hint={`${commissionTotals?.rows ?? 0} commission entries`}
+            isLoading={commissionsQuery.isLoading}
+            isError={commissionsQuery.isError}
+          />
         </div>
+        {performanceQuery.isError ? (
+          <p className="mt-2 text-[11px] text-muted-foreground">
+            Performance figures are unavailable for this partner.
+          </p>
+        ) : null}
       </section>
+
+      <div className="grid gap-3 lg:grid-cols-3">
+        {/* Partner details */}
+        <Card>
+          <CardHeader className="flex-row items-center justify-between space-y-0">
+            <CardTitle>Partner details</CardTitle>
+            <StatusPill tone={dealerStatusTone(dealer.status)}>
+              {dealerStatusLabel(dealer.status)}
+            </StatusPill>
+          </CardHeader>
+          <CardContent>
+            <dl className="grid grid-cols-2 gap-x-4 gap-y-2.5">
+              <Fact label="Firm" value={dealer.company ?? null} mono={false} />
+              <Fact label="Email" value={dealer.email ?? null} mono={false} />
+              <Fact label="Phone" value={dealer.phone ?? null} />
+              <Fact label="RERA id" value={dealer.reraId ?? null} />
+              <Fact
+                label="KYC"
+                mono={false}
+                value={
+                  dealer.kycStatus ? (
+                    <StatusPill tone={kycTone(dealer.kycStatus)}>
+                      {kycLabel(dealer.kycStatus)}
+                    </StatusPill>
+                  ) : null
+                }
+              />
+              <Fact
+                label="Commission rate"
+                value={
+                  dealer.commissionRate != null
+                    ? `${dealer.commissionRate}%`
+                    : null
+                }
+              />
+              <Fact label="Onboarded" value={formatDate(dealer.createdAt)} />
+              <Fact label="Updated" value={formatDate(dealer.updatedAt)} />
+            </dl>
+          </CardContent>
+        </Card>
+
+        {/* Commission ledger */}
+        <Card className="lg:col-span-2">
+          <CardHeader className="flex-row items-center justify-between space-y-0">
+            <CardTitle>Commission ledger</CardTitle>
+            <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
+              {commissionsQuery.isLoading ? "" : `${commissions.length} entries`}
+            </span>
+          </CardHeader>
+          <CardContent>
+            {commissionsQuery.isError ? (
+              <ErrorBanner
+                message="Could not load commissions."
+                onRetry={() => void commissionsQuery.refetch()}
+              />
+            ) : commissionsQuery.isLoading ? (
+              <div className="space-y-1.5">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <Skeleton key={i} className="h-6 w-full rounded-sm" />
+                ))}
+              </div>
+            ) : commissions.length === 0 ? (
+              <p className="text-xs text-muted-foreground">
+                No commission entries yet. They are raised automatically when a
+                booking sourced by this partner is confirmed.
+              </p>
+            ) : (
+              <Table wrapperClassName="border-0">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Booking</TableHead>
+                    <TableHead numeric>Rate</TableHead>
+                    <TableHead numeric>Amount</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Paid on</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {commissions.map((c) => (
+                    <TableRow key={c.id}>
+                      <TableCell className="whitespace-nowrap font-mono text-muted-foreground">
+                        {c.bookingId.slice(0, 8)}…
+                      </TableCell>
+                      <TableCell numeric>{c.rate}%</TableCell>
+                      <TableCell numeric className="text-right font-mono font-semibold tabular-nums">
+                        {inr(Number.parseFloat(c.amount))}
+                      </TableCell>
+                      <TableCell>
+                        <StatusPill tone={statusTone(c.status)}>
+                          {c.status}
+                        </StatusPill>
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap text-muted-foreground">
+                        {c.paidAt ? formatDate(c.paidAt) : "—"}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
+      </div>
 
       <Sheet
         open={editOpen}

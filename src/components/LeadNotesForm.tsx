@@ -1,6 +1,7 @@
 "use client";
 import * as React from "react";
 import { z } from "zod";
+import { Button } from "@/components/ui/button";
 import { useUpdateLeadMutation } from "@/hooks/useUpdateLeadMutation";
 
 const schema = z.object({ notes: z.string().min(1, "Notes cannot be empty") });
@@ -30,20 +31,19 @@ export function LeadNotesForm({ leadId, initialNotes = "", onSuccess }: LeadNote
   return (
     <div className="space-y-2">
       <textarea
-        className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+        aria-label="Lead notes"
+        className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background"
         rows={4}
         value={notes}
         onChange={(e) => setNotes(e.target.value)}
-        placeholder="Add notes..."
+        placeholder="Add notes…"
       />
-      {error && <p className="text-xs text-red-600">{error}</p>}
-      <button
-        onClick={handleSave}
-        disabled={mutation.isPending}
-        className="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
-      >
-        {mutation.isPending ? "Saving…" : "Save Notes"}
-      </button>
+      {error && <p className="text-[11px] text-destructive">{error}</p>}
+      <div className="flex justify-end">
+        <Button type="button" size="sm" onClick={handleSave} disabled={mutation.isPending}>
+          {mutation.isPending ? "Saving…" : "Save notes"}
+        </Button>
+      </div>
     </div>
   );
 }

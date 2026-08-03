@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { ErrorBanner } from "@/components/ErrorBanner";
+import { ownerLabel, type TaskOwnerOption } from "@/lib/taskBoard";
 import {
   CreateTaskRequestSchema,
   TASK_PRIORITIES,
@@ -17,12 +18,17 @@ import {
 interface TaskFormProps {
   /** When provided the form is in edit mode and pre-populates from this task. */
   initial?: Task | null;
+  /** Owner options — falls back to a raw user-id input when empty/omitted. */
+  users?: TaskOwnerOption[];
   isSubmitting: boolean;
   error: string | null;
   onSubmit: (data: CreateTaskRequest) => void;
   onCancel: () => void;
   submitLabel?: string;
 }
+
+const LABEL = "block text-xs font-medium text-foreground";
+const FIELD_ERROR = "text-[11px] text-destructive";
 
 type FieldErrors = Partial<Record<keyof CreateTaskRequest, string>>;
 
@@ -47,6 +53,7 @@ function isoToInputValue(iso: string | null | undefined): string {
 
 export function TaskForm({
   initial,
+  users,
   isSubmitting,
   error,
   onSubmit,
@@ -101,11 +108,11 @@ export function TaskForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <form onSubmit={handleSubmit} className="space-y-3">
       {error && <ErrorBanner message={error} />}
 
       <div className="space-y-1">
-        <label className="block text-sm font-medium text-slate-700" htmlFor="task-title">
+        <label className={LABEL} htmlFor="task-title">
           Title
         </label>
         <Input
@@ -118,13 +125,14 @@ export function TaskForm({
           required
         />
         {fieldErrors.title && (
-          <p className="text-xs text-red-600">{fieldErrors.title}</p>
+          <p className={FIELD_ERROR}>{fieldErrors.title}</p>
         )}
       </div>
 
       <div className="space-y-1">
-        <label className="block text-sm font-medium text-slate-700" htmlFor="task-description">
-          Description <span className="text-slate-400">(optional)</span>
+        <label className={LABEL} htmlFor="task-description">
+          Description{" "}
+          <span className="font-normal text-muted-foreground">(optional)</span>
         </label>
         <textarea
           id="task-description"
@@ -132,54 +140,77 @@ export function TaskForm({
           rows={3}
           value={description}
           onChange={(e) => setDescription(e.target.value)}
-          className="flex w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm placeholder:text-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 disabled:cursor-not-allowed disabled:opacity-50"
+          className="flex w-full rounded-md border border-input bg-background px-2 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50"
           placeholder="Additional context"
         />
         {fieldErrors.description && (
-          <p className="text-xs text-red-600">{fieldErrors.description}</p>
+          <p className={FIELD_ERROR}>{fieldErrors.description}</p>
         )}
       </div>
 
-      <div className="space-y-1">
-        <label className="block text-sm font-medium text-slate-700" htmlFor="task-priority">
-          Priority
-        </label>
-        <Select
-          id="task-priority"
-          value={priority}
-          onChange={(e) => setPriority(e.target.value as TaskPriority)}
-        >
-          {TASK_PRIORITIES.map((p) => (
-            <option key={p} value={p}>
-              {p.charAt(0).toUpperCase() + p.slice(1)}
-            </option>
-          ))}
-        </Select>
-        {fieldErrors.priority && (
-          <p className="text-xs text-red-600">{fieldErrors.priority}</p>
-        )}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="space-y-1">
+          <label className={LABEL} htmlFor="task-priority">
+            Priority
+          </label>
+          <Select
+            id="task-priority"
+            value={priority}
+            onChange={(e) => setPriority(e.target.value as TaskPriority)}
+          >
+            {TASK_PRIORITIES.map((p) => (
+              <option key={p} value={p}>
+                {p.charAt(0).toUpperCase() + p.slice(1)}
+              </option>
+            ))}
+          </Select>
+          {fieldErrors.priority && (
+            <p className={FIELD_ERROR}>{fieldErrors.priority}</p>
+          )}
+        </div>
+
+        <div className="space-y-1">
+          <label className={LABEL} htmlFor="task-assigned-to">
+            Owner
+          </label>
+          {users && users.length > 0 ? (
+            <Select
+              id="task-assigned-to"
+              value={assignedTo}
+              onChange={(e) => setAssignedTo(e.target.value)}
+              required
+            >
+              <option value="">Select an owner…</option>
+              {users.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {ownerLabel(u)}
+                </option>
+              ))}
+              {assignedTo && !users.some((u) => u.id === assignedTo) ? (
+                <option value={assignedTo}>{assignedTo}</option>
+              ) : null}
+            </Select>
+          ) : (
+            <Input
+              id="task-assigned-to"
+              type="text"
+              value={assignedTo}
+              onChange={(e) => setAssignedTo(e.target.value)}
+              placeholder="user-uuid"
+              className="font-mono"
+              required
+            />
+          )}
+          {fieldErrors.assignedTo && (
+            <p className={FIELD_ERROR}>{fieldErrors.assignedTo}</p>
+          )}
+        </div>
       </div>
 
       <div className="space-y-1">
-        <label className="block text-sm font-medium text-slate-700" htmlFor="task-assigned-to">
-          Assigned to (user ID)
-        </label>
-        <Input
-          id="task-assigned-to"
-          type="text"
-          value={assignedTo}
-          onChange={(e) => setAssignedTo(e.target.value)}
-          placeholder="user-uuid"
-          required
-        />
-        {fieldErrors.assignedTo && (
-          <p className="text-xs text-red-600">{fieldErrors.assignedTo}</p>
-        )}
-      </div>
-
-      <div className="space-y-1">
-        <label className="block text-sm font-medium text-slate-700" htmlFor="task-due-date">
-          Due date <span className="text-slate-400">(optional)</span>
+        <label className={LABEL} htmlFor="task-due-date">
+          Due date{" "}
+          <span className="font-normal text-muted-foreground">(optional)</span>
         </label>
         <Input
           id="task-due-date"
@@ -188,14 +219,15 @@ export function TaskForm({
           onChange={(e) => setDueDate(e.target.value)}
         />
         {fieldErrors.dueDate && (
-          <p className="text-xs text-red-600">{fieldErrors.dueDate}</p>
+          <p className={FIELD_ERROR}>{fieldErrors.dueDate}</p>
         )}
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div className="space-y-1">
-          <label className="block text-sm font-medium text-slate-700" htmlFor="task-resource-type">
-            Linked resource type <span className="text-slate-400">(optional)</span>
+          <label className={LABEL} htmlFor="task-resource-type">
+            Linked to{" "}
+            <span className="font-normal text-muted-foreground">(optional)</span>
           </label>
           <Select
             id="task-resource-type"
@@ -208,11 +240,11 @@ export function TaskForm({
             <option value="site_visit">Site visit</option>
           </Select>
           {fieldErrors.resourceType && (
-            <p className="text-xs text-red-600">{fieldErrors.resourceType}</p>
+            <p className={FIELD_ERROR}>{fieldErrors.resourceType}</p>
           )}
         </div>
         <div className="space-y-1">
-          <label className="block text-sm font-medium text-slate-700" htmlFor="task-resource-id">
+          <label className={LABEL} htmlFor="task-resource-id">
             Resource ID
           </label>
           <Input
@@ -220,16 +252,17 @@ export function TaskForm({
             type="text"
             value={resourceId}
             onChange={(e) => setResourceId(e.target.value)}
-            placeholder={resourceType ? `${resourceType} id` : "—"}
+            placeholder={resourceType ? `${resourceType.replace("_", " ")} id` : "—"}
+            className="font-mono"
             disabled={!resourceType}
           />
           {fieldErrors.resourceId && (
-            <p className="text-xs text-red-600">{fieldErrors.resourceId}</p>
+            <p className={FIELD_ERROR}>{fieldErrors.resourceId}</p>
           )}
         </div>
       </div>
 
-      <div className="flex justify-end gap-2 pt-2">
+      <div className="flex justify-end gap-2 pt-1">
         <Button
           type="button"
           variant="outline"

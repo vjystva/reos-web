@@ -1,5 +1,6 @@
 "use client";
 import * as React from "react";
+import { Button } from "@/components/ui/button";
 import { useConvertLeadMutation } from "@/hooks/useConvertLeadMutation";
 import type { LeadStage } from "@/types/api";
 
@@ -7,9 +8,10 @@ interface ConvertLeadButtonProps {
   leadId: string;
   stage: LeadStage;
   onSuccess?: () => void;
+  className?: string;
 }
 
-export function ConvertLeadButton({ leadId, stage, onSuccess }: ConvertLeadButtonProps) {
+export function ConvertLeadButton({ leadId, stage, onSuccess, className }: ConvertLeadButtonProps) {
   const mutation = useConvertLeadMutation();
   const isDisabled = stage === "booking" || stage === "lost" || mutation.isPending;
 
@@ -19,12 +21,8 @@ export function ConvertLeadButton({ leadId, stage, onSuccess }: ConvertLeadButto
   };
 
   return (
-    <button
-      onClick={handleClick}
-      disabled={isDisabled}
-      className="rounded-md bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50"
-    >
+    <Button type="button" onClick={handleClick} disabled={isDisabled} className={className}>
       {mutation.isPending ? "Converting…" : "Convert to Booking"}
-    </button>
+    </Button>
   );
 }

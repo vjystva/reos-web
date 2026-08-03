@@ -1,21 +1,11 @@
 import * as React from "react";
+import { StatusPill } from "@/components/StatusPill";
+import {
+  unitStatusEmphasis,
+  unitStatusLabel,
+  unitStatusTone,
+} from "@/lib/unitTone";
 import { cn } from "@/lib/utils";
-
-const COLORS: Record<string, string> = {
-  available: "bg-green-700 text-white",
-  blocked: "bg-amber-400 text-slate-900",
-  booked: "bg-blue-700 text-white",
-  sold: "bg-slate-700 text-white",
-  held: "bg-slate-400 text-white",
-};
-
-const LABELS: Record<string, string> = {
-  available: "AVAILABLE",
-  blocked: "BLOCKED",
-  booked: "BOOKED",
-  sold: "SOLD",
-  held: "HELD",
-};
 
 interface UnitStatusBadgeProps {
   status: string | undefined;
@@ -23,25 +13,24 @@ interface UnitStatusBadgeProps {
 }
 
 /**
- * Colour + always-visible text label (WCAG: colour is never the sole
- * differentiator). `role="img"` because the badge is a static label, not a
- * live region (frontend review nit 1).
+ * Unit status chip — thin wrapper over `StatusPill` so every unit surface
+ * (grid tile, table row, slide-over) reads the same tone language defined in
+ * `lib/unitTone.ts`. Covers all 8 backend UNIT_STATUSES.
+ *
+ * The text label is always visible (WCAG: colour is never the sole
+ * differentiator) and `role="img"` keeps it a static label rather than a live
+ * region.
  */
 export function UnitStatusBadge({ status, className }: UnitStatusBadgeProps) {
-  const key = (status ?? "").toLowerCase();
-  const colour = COLORS[key] ?? "bg-slate-300 text-slate-900";
-  const label = LABELS[key] ?? (status ? status.toUpperCase() : "—");
+  const label = unitStatusLabel(status);
   return (
-    <span
+    <StatusPill
       role="img"
       aria-label={`Status: ${label}`}
-      className={cn(
-        "inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold tracking-wide",
-        colour,
-        className,
-      )}
+      tone={unitStatusTone(status)}
+      className={cn(unitStatusEmphasis(status), className)}
     >
       {label}
-    </span>
+    </StatusPill>
   );
 }

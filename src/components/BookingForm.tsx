@@ -10,9 +10,11 @@ import {
   useBookingMutation,
   BookingConflictError,
 } from "@/hooks/useBookingMutation";
-import { formatCurrency } from "@/lib/formatCurrency";
-import { stageLabel } from "@/lib/utils";
+import { cn, inr, stageLabel } from "@/lib/utils";
 import type { Lead, BookingCreated } from "@/types/api";
+
+/** Dense field label recipe — shared across the booking surfaces. */
+const LABEL = "block text-[11px] uppercase tracking-wider text-muted-foreground";
 
 interface BookingFormProps {
   unitId: string;
@@ -107,12 +109,9 @@ export function BookingForm({
   }
 
   return (
-    <form onSubmit={submit} className="space-y-4">
-      <fieldset className="space-y-2">
-        <label
-          htmlFor="lead-search"
-          className="block text-xs font-semibold uppercase tracking-wide text-slate-500"
-        >
+    <form onSubmit={submit} className="space-y-3">
+      <fieldset className="space-y-1.5">
+        <label htmlFor="lead-search" className={LABEL}>
           Select lead
         </label>
         <Input
@@ -125,16 +124,16 @@ export function BookingForm({
         <div
           role="listbox"
           aria-label="Leads"
-          className="max-h-48 overflow-y-auto rounded-md border border-slate-200 bg-white"
+          className="max-h-48 overflow-y-auto rounded-md border border-border bg-card"
         >
           {filtered.length === 0 ? (
-            <div className="px-3 py-2 text-sm text-slate-500">
+            <div className="px-2.5 py-2 text-xs text-muted-foreground">
               {leads.length === 0
                 ? "No leads assigned to you. Create a lead first."
                 : "No matching leads."}
             </div>
           ) : (
-            <ul>
+            <ul className="divide-y divide-border">
               {filtered.map((lead) => {
                 const active = lead.id === selectedLeadId;
                 return (
@@ -144,16 +143,22 @@ export function BookingForm({
                       role="option"
                       aria-selected={active}
                       onClick={() => setSelectedLeadId(lead.id)}
-                      className={`flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm ${
-                        active ? "bg-slate-900 text-white" : "hover:bg-slate-100"
-                      }`}
+                      className={cn(
+                        "flex w-full items-center justify-between gap-3 px-2.5 py-2 text-left text-xs transition-colors",
+                        active
+                          ? "bg-primary text-primary-foreground"
+                          : "text-foreground hover:bg-muted/60",
+                      )}
                     >
-                      <span className="flex flex-col">
+                      <span className="flex flex-col gap-0.5">
                         <span className="font-medium">{lead.name}</span>
                         <span
-                          className={
-                            active ? "text-xs text-slate-300" : "text-xs text-slate-500"
-                          }
+                          className={cn(
+                            "text-[11px]",
+                            active
+                              ? "text-primary-foreground/70"
+                              : "text-muted-foreground",
+                          )}
                         >
                           {lead.phone ?? "no phone"} · {stageLabel(lead.stage)}
                         </span>
@@ -168,10 +173,7 @@ export function BookingForm({
       </fieldset>
 
       <fieldset className="space-y-1">
-        <label
-          htmlFor="booking-amount"
-          className="block text-xs font-semibold uppercase tracking-wide text-slate-500"
-        >
+        <label htmlFor="booking-amount" className={LABEL}>
           Booking amount
         </label>
         <Input
@@ -179,11 +181,15 @@ export function BookingForm({
           type="number"
           min={0}
           step={1}
+          className="font-mono tabular-nums"
           value={amount}
           onChange={(e) => setAmount(e.target.value)}
         />
-        <p className="text-xs text-slate-500">
-          Default: {formatCurrency(defaultAmount)}
+        <p className="text-[11px] text-muted-foreground">
+          Default:{" "}
+          <span className="font-mono tabular-nums text-foreground">
+            {inr(defaultAmount)}
+          </span>
         </p>
       </fieldset>
 
@@ -206,7 +212,7 @@ export function BookingForm({
           Cancel
         </Button>
         {selectedLead ? (
-          <span className="ml-auto self-center text-xs text-slate-500">
+          <span className="ml-auto self-center text-[11px] text-muted-foreground">
             for {selectedLead.name}
           </span>
         ) : null}

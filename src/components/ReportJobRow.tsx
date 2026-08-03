@@ -7,9 +7,17 @@ const typeColors: Record<ReportType, string> = {
   bookings: "bg-green-100 text-green-700",
   payments: "bg-purple-100 text-purple-700",
   site_visits: "bg-amber-100 text-amber-700",
+  leads_summary: "bg-blue-100 text-blue-600",
+  bookings_summary: "bg-green-100 text-green-600",
+  revenue_summary: "bg-purple-100 text-purple-600",
+  project_wise_sales: "bg-teal-100 text-teal-700",
+  sales_performance: "bg-indigo-100 text-indigo-700",
+  agent_commission: "bg-orange-100 text-orange-700",
+  collection_report: "bg-rose-100 text-rose-700",
 };
 const statusColors: Record<ReportJobStatus, string> = {
   queued: "bg-slate-100 text-slate-600",
+  running: "bg-blue-100 text-blue-700",
   processing: "bg-amber-100 text-amber-700",
   completed: "bg-green-100 text-green-700",
   failed: "bg-red-100 text-red-700",

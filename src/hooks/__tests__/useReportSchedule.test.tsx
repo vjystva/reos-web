@@ -64,6 +64,7 @@ describe("validateScheduleForm", () => {
   });
 
   it("rejects missing email field", () => {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { email: _, ...rest } = valid;
     const result = validateScheduleForm(rest);
     expect(result.success).toBe(false);

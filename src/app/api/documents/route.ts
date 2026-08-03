@@ -36,9 +36,12 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     );
   }
 
-  // Tolerate backends that return a bare array.
+  // Normalize backend envelopes → { documents: [] } for the frontend.
+  // Backend returns { data: [], total, page, limit }; bare arrays also handled.
   if (Array.isArray(json)) {
     json = { documents: json };
+  } else if (json !== null && typeof json === "object" && "data" in (json as object)) {
+    json = { documents: (json as { data: unknown[] }).data };
   }
 
   const parsed = DocumentsResponseSchema.safeParse(json);

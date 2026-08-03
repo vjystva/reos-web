@@ -119,8 +119,7 @@ export default function WorkflowsPage() {
                           {w.name}
                         </Link>
                         <p className="mt-1 text-xs text-slate-500">
-                          Trigger: {w.triggerType.replace(/_/g, " ")} · {w.actions.length}{" "}
-                          action{w.actions.length === 1 ? "" : "s"}
+                          Trigger: {w.triggerEvent.replace(/_/g, " ")}
                         </p>
                       </div>
                       <WorkflowStatusBadge isActive={w.isActive} />

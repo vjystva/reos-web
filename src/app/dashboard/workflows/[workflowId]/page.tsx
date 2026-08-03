@@ -37,11 +37,7 @@ export default function WorkflowDetailPage() {
           {w && (
             <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
               <WorkflowStatusBadge isActive={w.isActive} />
-              <span>Trigger: {w.triggerType.replace(/_/g, " ")}</span>
-              <span>·</span>
-              <span>
-                {w.actions.length} action{w.actions.length === 1 ? "" : "s"}
-              </span>
+              <span>Trigger: {w.triggerEvent.replace(/_/g, " ")}</span>
             </div>
           )}
         </div>
@@ -59,40 +55,6 @@ export default function WorkflowDetailPage() {
           onRetry={() => workflowQuery.refetch()}
         />
       )}
-
-      <section className="rounded-md border border-slate-200 bg-white p-4">
-        <h2 className="mb-3 text-sm font-semibold text-slate-900">Actions</h2>
-        {workflowQuery.isLoading ? (
-          <p className="text-sm text-slate-500">Loading…</p>
-        ) : !w ? (
-          <p className="text-sm text-slate-500">Workflow not available.</p>
-        ) : w.actions.length === 0 ? (
-          <p className="text-sm text-slate-500">No actions defined.</p>
-        ) : (
-          <ol className="space-y-2">
-            {w.actions.map((a, idx) => (
-              <li
-                key={idx}
-                className="rounded-md border border-slate-100 bg-slate-50 p-3"
-              >
-                <p className="text-sm font-medium text-slate-800">
-                  {idx + 1}. {a.actionType.replace(/_/g, " ")}
-                </p>
-                {a.config && Object.keys(a.config).length > 0 && (
-                  <dl className="mt-2 grid grid-cols-1 gap-x-4 gap-y-1 text-xs text-slate-600 sm:grid-cols-2">
-                    {Object.entries(a.config).map(([k, v]) => (
-                      <div key={k} className="flex gap-2">
-                        <dt className="font-medium">{k}:</dt>
-                        <dd className="truncate">{String(v)}</dd>
-                      </div>
-                    ))}
-                  </dl>
-                )}
-              </li>
-            ))}
-          </ol>
-        )}
-      </section>
 
       <section className="space-y-2">
         <h2 className="text-sm font-semibold text-slate-900">

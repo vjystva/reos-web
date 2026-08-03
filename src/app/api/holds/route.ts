@@ -8,7 +8,7 @@ export async function GET(req: NextRequest) {
   const url = qs ? `/holds?${qs}` : '/holds';
 
   try {
-    const raw = await proxyFetch(url, { method: 'GET' }, req);
+    const raw = await proxyFetch(req, url, { method: 'GET' });
     const parsed = HoldsResponseSchema.safeParse(raw);
     if (!parsed.success) {
       return NextResponse.json({ error: 'Invalid response from backend' }, { status: 502 });

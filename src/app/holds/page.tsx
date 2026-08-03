@@ -21,8 +21,9 @@ export default function HoldsPage() {
 
   const { data, isLoading, isError } = useHolds(params);
 
+  // The `main` landmark is owned by AppShell (SidebarInset); page padding too.
   return (
-    <main className="p-6 max-w-5xl mx-auto">
+    <div className="max-w-5xl mx-auto">
       <h1 className="text-2xl font-semibold mb-4">Unit Holds</h1>
 
       <div className="flex gap-2 mb-6">
@@ -95,6 +96,6 @@ export default function HoldsPage() {
           {data.total} total hold{data.total !== 1 ? 's' : ''}
         </p>
       )}
-    </main>
+    </div>
   );
 }

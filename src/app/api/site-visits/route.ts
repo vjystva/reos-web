@@ -51,3 +51,35 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
   return NextResponse.json(parsed.data, { status: 200 });
 }
+
+/**
+ * POST /api/site-visits — schedule a new site visit.
+ * Body: { leadId, scheduledAt, notes? }
+ */
+export async function POST(req: NextRequest): Promise<NextResponse> {
+  let rawBody: unknown;
+  try { rawBody = await req.json(); } catch {
+    return NextResponse.json({ error: "invalid_json" }, { status: 400 });
+  }
+
+  const upstream = await proxyFetch(req, "/site-visits", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(rawBody),
+  });
+
+  if (upstream.status === 401) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+  if (!upstream.ok) {
+    let errBody: unknown = { error: "upstream_error" };
+    try { errBody = await upstream.json(); } catch { /* keep default */ }
+    return NextResponse.json(errBody, { status: upstream.status });
+  }
+
+  let json: unknown;
+  try { json = await upstream.json(); } catch {
+    return NextResponse.json({ error: "upstream_shape_mismatch" }, { status: 502 });
+  }
+  return NextResponse.json(json, { status: 201 });
+}

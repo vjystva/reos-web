@@ -7,11 +7,9 @@ import { Select } from "@/components/ui/select";
 import { ErrorBanner } from "@/components/ErrorBanner";
 import {
   CreateWorkflowRequestSchema,
-  WORKFLOW_ACTION_TYPES,
-  WORKFLOW_TRIGGER_TYPES,
+  WORKFLOW_TRIGGER_EVENTS,
   type CreateWorkflowRequest,
-  type WorkflowActionType,
-  type WorkflowTriggerType,
+  type WorkflowTriggerEvent,
 } from "@/types/api";
 
 interface CreateWorkflowFormProps {
@@ -20,35 +18,10 @@ interface CreateWorkflowFormProps {
   onSubmit: (data: CreateWorkflowRequest) => void;
 }
 
-interface ConfigRow {
-  key: string;
-  value: string;
-}
-
-interface ActionDraft {
-  actionType: WorkflowActionType;
-  config: ConfigRow[];
-}
-
 type FieldErrors = {
   name?: string;
-  triggerType?: string;
-  actions?: string;
+  triggerEvent?: string;
 };
-
-function freshAction(): ActionDraft {
-  return { actionType: "send_notification", config: [] };
-}
-
-function buildConfig(rows: ConfigRow[]): Record<string, string> | undefined {
-  const out: Record<string, string> = {};
-  for (const row of rows) {
-    const k = row.key.trim();
-    if (!k) continue;
-    out[k] = row.value;
-  }
-  return Object.keys(out).length > 0 ? out : undefined;
-}
 
 export function CreateWorkflowForm({
   isSubmitting,
@@ -56,77 +29,17 @@ export function CreateWorkflowForm({
   onSubmit,
 }: CreateWorkflowFormProps) {
   const [name, setName] = React.useState("");
-  const [triggerType, setTriggerType] =
-    React.useState<WorkflowTriggerType>("lead_created");
-  const [actions, setActions] = React.useState<ActionDraft[]>([freshAction()]);
+  const [triggerEvent, setTriggerEvent] =
+    React.useState<WorkflowTriggerEvent>("lead_stage_changed");
   const [isActive, setIsActive] = React.useState<boolean>(true);
   const [fieldErrors, setFieldErrors] = React.useState<FieldErrors>({});
-
-  function updateAction(idx: number, patch: Partial<ActionDraft>) {
-    setActions((prev) =>
-      prev.map((a, i) => (i === idx ? { ...a, ...patch } : a)),
-    );
-  }
-
-  function addAction() {
-    setActions((prev) => [...prev, freshAction()]);
-  }
-
-  function removeAction(idx: number) {
-    setActions((prev) => prev.filter((_, i) => i !== idx));
-  }
-
-  function addConfigRow(actionIdx: number) {
-    setActions((prev) =>
-      prev.map((a, i) =>
-        i === actionIdx
-          ? { ...a, config: [...a.config, { key: "", value: "" }] }
-          : a,
-      ),
-    );
-  }
-
-  function updateConfigRow(
-    actionIdx: number,
-    rowIdx: number,
-    patch: Partial<ConfigRow>,
-  ) {
-    setActions((prev) =>
-      prev.map((a, i) =>
-        i === actionIdx
-          ? {
-              ...a,
-              config: a.config.map((r, j) =>
-                j === rowIdx ? { ...r, ...patch } : r,
-              ),
-            }
-          : a,
-      ),
-    );
-  }
-
-  function removeConfigRow(actionIdx: number, rowIdx: number) {
-    setActions((prev) =>
-      prev.map((a, i) =>
-        i === actionIdx
-          ? { ...a, config: a.config.filter((_, j) => j !== rowIdx) }
-          : a,
-      ),
-    );
-  }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
     const raw = {
       name: name.trim(),
-      triggerType,
-      actions: actions.map((a) => {
-        const config = buildConfig(a.config);
-        return config
-          ? { actionType: a.actionType, config }
-          : { actionType: a.actionType };
-      }),
+      triggerEvent,
       isActive,
     };
 
@@ -142,10 +55,8 @@ export function CreateWorkflowForm({
     }
     setFieldErrors({});
     onSubmit(result.data);
-    // Reset
     setName("");
-    setTriggerType("lead_created");
-    setActions([freshAction()]);
+    setTriggerEvent("lead_stage_changed");
     setIsActive(true);
   }
 
@@ -183,146 +94,20 @@ export function CreateWorkflowForm({
         </label>
         <Select
           id="workflow-trigger"
-          value={triggerType}
+          value={triggerEvent}
           onChange={(e) =>
-            setTriggerType(e.target.value as WorkflowTriggerType)
+            setTriggerEvent(e.target.value as WorkflowTriggerEvent)
           }
         >
-          {WORKFLOW_TRIGGER_TYPES.map((t) => (
+          {WORKFLOW_TRIGGER_EVENTS.map((t) => (
             <option key={t} value={t}>
               {t.replace(/_/g, " ")}
             </option>
           ))}
         </Select>
-        {fieldErrors.triggerType && (
-          <p className="text-xs text-red-600">{fieldErrors.triggerType}</p>
+        {fieldErrors.triggerEvent && (
+          <p className="text-xs text-red-600">{fieldErrors.triggerEvent}</p>
         )}
-      </div>
-
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <label className="block text-sm font-medium text-slate-700">
-            Actions
-          </label>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={addAction}
-          >
-            Add action
-          </Button>
-        </div>
-        {fieldErrors.actions && (
-          <p className="text-xs text-red-600">{fieldErrors.actions}</p>
-        )}
-
-        <ul role="list" className="space-y-3">
-          {actions.map((a, idx) => (
-            <li
-              key={idx}
-              className="rounded-md border border-slate-200 bg-slate-50 p-3 space-y-2"
-            >
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex-1 space-y-1">
-                  <label
-                    className="block text-xs font-medium text-slate-600"
-                    htmlFor={`workflow-action-${idx}`}
-                  >
-                    Action type
-                  </label>
-                  <Select
-                    id={`workflow-action-${idx}`}
-                    value={a.actionType}
-                    onChange={(e) =>
-                      updateAction(idx, {
-                        actionType: e.target.value as WorkflowActionType,
-                      })
-                    }
-                  >
-                    {WORKFLOW_ACTION_TYPES.map((t) => (
-                      <option key={t} value={t}>
-                        {t.replace(/_/g, " ")}
-                      </option>
-                    ))}
-                  </Select>
-                </div>
-                {actions.length > 1 && (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    aria-label={`Remove action ${idx + 1}`}
-                    onClick={() => removeAction(idx)}
-                    className="mt-5"
-                  >
-                    Remove
-                  </Button>
-                )}
-              </div>
-
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-medium text-slate-600">
-                    Config
-                  </span>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => addConfigRow(idx)}
-                  >
-                    Add field
-                  </Button>
-                </div>
-                {a.config.length > 0 && (
-                  <ul className="space-y-1.5">
-                    {a.config.map((row, rowIdx) => (
-                      <li
-                        key={rowIdx}
-                        className="flex items-center gap-2"
-                      >
-                        <Input
-                          aria-label={`Action ${idx + 1} config key ${rowIdx + 1}`}
-                          type="text"
-                          value={row.key}
-                          onChange={(e) =>
-                            updateConfigRow(idx, rowIdx, {
-                              key: e.target.value,
-                            })
-                          }
-                          placeholder="key"
-                          className="flex-1"
-                        />
-                        <Input
-                          aria-label={`Action ${idx + 1} config value ${rowIdx + 1}`}
-                          type="text"
-                          value={row.value}
-                          onChange={(e) =>
-                            updateConfigRow(idx, rowIdx, {
-                              value: e.target.value,
-                            })
-                          }
-                          placeholder="value"
-                          className="flex-1"
-                        />
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          aria-label={`Remove field ${rowIdx + 1} from action ${idx + 1}`}
-                          onClick={() => removeConfigRow(idx, rowIdx)}
-                        >
-                          ×
-                        </Button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            </li>
-          ))}
-        </ul>
       </div>
 
       <div className="flex items-center gap-2">

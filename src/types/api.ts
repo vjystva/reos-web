@@ -11,7 +11,7 @@ export const UserSchema = z.object({
   id: z.string(),
   email: z.string().email(),
   role: z.string(),
-  tenantId: z.string(),
+  tenantId: z.string().nullable(),
   name: z.string().optional(),
 });
 export type User = z.infer<typeof UserSchema>;
@@ -98,12 +98,19 @@ export type LeadScoreBreakdown = z.infer<typeof LeadScoreBreakdownSchema>;
 export const LeadSchema = z.object({
   id: z.string(),
   tenantId: z.string().optional(),
-  name: z.string(),
+  // Backend sends firstName + lastName; older shape sent name directly
+  name: z.string().optional(),
+  firstName: z.string().optional(),
+  lastName: z.string().optional(),
   phone: z.string().nullable().optional(),
   email: z.string().nullable().optional(),
   source: z.string().nullable().optional(),
-  stage: LeadStageSchema,
-  temperature: LeadTemperatureSchema,
+  // Backend sends pipelineStage; older shape sent stage
+  stage: LeadStageSchema.optional(),
+  pipelineStage: LeadStageSchema.optional(),
+  // Backend sends leadTemperature; older shape sent temperature
+  temperature: LeadTemperatureSchema.optional(),
+  leadTemperature: LeadTemperatureSchema.optional(),
   aiScore: z.number().nullable().optional(),
   assignedDealer: LeadDealerSchema.nullable().optional(),
   assignedTo: z.string().nullable().optional(),
@@ -113,11 +120,17 @@ export const LeadSchema = z.object({
   updatedAt: z.string().optional(),
   scoreBreakdown: LeadScoreBreakdownSchema.nullable().optional(),
   activity: z.array(LeadActivitySchema).nullable().optional(),
-});
+}).transform((lead) => ({
+  ...lead,
+  name: (lead.name ?? [lead.firstName, lead.lastName].filter(Boolean).join(" ")) || "",
+  stage: (lead.stage ?? lead.pipelineStage ?? "new") as LeadStage,
+  temperature: (lead.temperature ?? lead.leadTemperature ?? "cold") as LeadTemperature,
+}));
 export type Lead = z.infer<typeof LeadSchema>;
 
-export const LeadResponseSchema = z.object({ lead: LeadSchema });
-export type LeadResponse = z.infer<typeof LeadResponseSchema>;
+// Single-lead BFF wraps the raw backend shape directly (no { lead: ... } envelope)
+export const LeadResponseSchema = LeadSchema;
+export type LeadResponse = Lead;
 
 export const UpdateLeadRequestSchema = z.object({
   stage: LeadStageSchema.optional(),
@@ -125,6 +138,24 @@ export const UpdateLeadRequestSchema = z.object({
   assignedTo: z.string().optional(),
 });
 export type UpdateLeadRequest = z.infer<typeof UpdateLeadRequestSchema>;
+
+export const LEAD_SOURCES = ["web_form", "whatsapp", "phone", "csv_import", "third_party_api"] as const;
+export type LeadSource = typeof LEAD_SOURCES[number];
+export const LeadSourceSchema = z.enum(LEAD_SOURCES);
+
+export const CreateLeadRequestSchema = z.object({
+  firstName: z.string().min(1, "First name is required").max(120),
+  lastName: z.string().min(1, "Last name is required").max(120),
+  phone: z.string().regex(/^\+?[0-9][0-9 -]{6,19}$/, "Enter a valid phone number"),
+  email: z.string().email("Enter a valid email").optional().or(z.literal("")),
+  source: LeadSourceSchema,
+  budgetMin: z.number().min(0).optional(),
+  budgetMax: z.number().min(0).optional(),
+  preferredLocation: z.string().max(200).optional(),
+  projectInterest: z.string().max(200).optional(),
+  projectId: z.string().uuid().optional(),
+});
+export type CreateLeadRequest = z.infer<typeof CreateLeadRequestSchema>;
 
 // --- Paginated envelope ---------------------------------------------------
 
@@ -163,7 +194,7 @@ export const BookingDetailSchema = z.object({
   unitId: z.string(),
   leadId: z.string().optional(),
   tenantId: z.string().optional(),
-  bookingAmount: z.string().nullable().optional(),
+  bookingAmount: z.union([z.string(), z.number()]).nullable().optional(),
   notes: z.string().nullable().optional(),
   confirmedAt: z.string().nullable().optional(),
   cancelledAt: z.string().nullable().optional(),
@@ -181,19 +212,37 @@ export const ProjectSchema = z
   .object({
     id: z.string(),
     name: z.string(),
-    type: ProjectTypeSchema,
+    // Backend sends projectType; older shape sent type
+    type: ProjectTypeSchema.optional(),
+    projectType: ProjectTypeSchema.optional(),
     city: z.string().optional(),
+    location: z.string().optional(),
     launchDate: z.string().nullable().optional(),
     possessionDate: z.string().nullable().optional(),
     isActive: z.boolean().optional(),
     createdAt: z.string().optional(),
     tenantId: z.string().optional(),
   })
-  .passthrough();
+  .passthrough()
+  .transform((p) => ({
+    ...p,
+    type: (p.type ?? p.projectType ?? "apartment") as ProjectType,
+  }));
 export type Project = z.infer<typeof ProjectSchema>;
 
 export const ProjectsResponseSchema = paginatedSchema(ProjectSchema);
 export type ProjectsResponse = z.infer<typeof ProjectsResponseSchema>;
+
+export const CreateProjectRequestSchema = z.object({
+  name: z.string().min(1, "Project name is required").max(255),
+  projectType: ProjectTypeSchema,
+  location: z.string().min(1, "Location is required").max(500),
+  city: z.string().min(1, "City is required").max(100),
+  description: z.string().max(5000).optional(),
+  launchDate: z.string().optional(),
+  possessionDate: z.string().optional(),
+});
+export type CreateProjectRequest = z.infer<typeof CreateProjectRequestSchema>;
 
 // --- Towers ---------------------------------------------------------------
 
@@ -224,14 +273,38 @@ export type TowersResponse = z.infer<typeof TowersResponseSchema>;
 
 // --- Units ----------------------------------------------------------------
 
-export const UnitStatusSchema = z.enum([
+/**
+ * Real 8-value lifecycle — source of truth is the backend's `UNIT_STATUSES`
+ * (`reos-backend/src/units/unit.constants.ts`). Keep in sync with the badge
+ * colours in `UnitStatusBadge.tsx` and the transition map in
+ * `lib/unitTransitions.ts`.
+ */
+export const UNIT_STATUSES = [
   "available",
+  "on_hold",
   "blocked",
   "booked",
-  "sold",
-  "held",
-]);
+  "agreement_signed",
+  "registered",
+  "handed_over",
+  "cancelled",
+] as const;
+export const UnitStatusSchema = z.enum(UNIT_STATUSES);
 export type UnitStatus = z.infer<typeof UnitStatusSchema>;
+
+// Facing directions accepted by the backend CreateUnitDto.
+export const FACING_DIRECTIONS = [
+  "north",
+  "south",
+  "east",
+  "west",
+  "north_east",
+  "north_west",
+  "south_east",
+  "south_west",
+] as const;
+export const FacingDirectionSchema = z.enum(FACING_DIRECTIONS);
+export type FacingDirection = z.infer<typeof FacingDirectionSchema>;
 
 /**
  * Widened from feat-0001 (which only read `total` from the paginated envelope).
@@ -261,6 +334,38 @@ export type Unit = z.infer<typeof UnitSchema>;
 
 export const UnitsResponseSchema = paginatedSchema(UnitSchema);
 export type UnitsResponse = z.infer<typeof UnitsResponseSchema>;
+
+/**
+ * Mirrors the backend `CreateUnitDto`. `towerId` is only sent for apartment
+ * projects; the BFF routes to the tower-nested vs project-flat endpoint based
+ * on its presence.
+ */
+export const CreateUnitRequestSchema = z.object({
+  // Non-empty string rather than z.string().uuid(): the backend
+  // (ParseUUIDPipe / @IsUUID) is the authoritative UUID check and is more
+  // lenient than zod's strict RFC-4122 regex, which would reject otherwise-
+  // valid tower ids (e.g. seed data with non-standard variant bits).
+  towerId: z.string().min(1).optional(),
+  unitNumber: z.string().min(1, "Unit number is required").max(50),
+  floor: z.number().int().min(-10).max(500),
+  bedrooms: z.number().int().min(0).max(20),
+  area: z.number().positive("Area must be greater than 0"),
+  facing: FacingDirectionSchema.optional(),
+  isCorner: z.boolean().optional(),
+});
+export type CreateUnitRequest = z.infer<typeof CreateUnitRequestSchema>;
+
+/**
+ * Mirrors the backend `TransitionUnitStatusDto`. `note` is required by the
+ * backend for `cancelled`/`on_hold` targets (enforced server-side).
+ */
+export const TransitionUnitStatusRequestSchema = z.object({
+  toStatus: UnitStatusSchema,
+  note: z.string().min(1).max(1000).optional(),
+});
+export type TransitionUnitStatusRequest = z.infer<
+  typeof TransitionUnitStatusRequestSchema
+>;
 
 // --- Unit price config ----------------------------------------------------
 
@@ -462,6 +567,48 @@ export const CancelVisitRequestSchema = z.object({
   reason: z.string().min(1, "Reason is required").max(500, "Reason must be 500 characters or fewer"),
 });
 export type CancelVisitRequest = z.infer<typeof CancelVisitRequestSchema>;
+
+// --- Tenant-wide site visits (calendar) -----------------------------------
+
+/**
+ * Raw wire shape of `GET /site-visits` on the backend (SiteVisitResponseDto):
+ * lead-scoped, `scheduledAt`, nullable project/unit/agent.
+ *
+ * Deliberately separate from `SiteVisitSchema` above — that one models the
+ * booking-scoped shape (`bookingId` + `visitDate`) the per-booking screens
+ * already depend on. Keeping two schemas means neither consumer has to loosen
+ * its contract, and no existing route changes behaviour.
+ */
+export const TenantSiteVisitSchema = z
+  .object({
+    id: z.string(),
+    tenantId: z.string().optional(),
+    leadId: z.string(),
+    projectId: z.string().nullable().optional(),
+    unitId: z.string().nullable().optional(),
+    assignedAgentId: z.string().nullable().optional(),
+    scheduledAt: z.string(),
+    status: SiteVisitStatusSchema,
+    rescheduleCount: z.number().nullable().optional(),
+    cancellationReason: z.string().nullable().optional(),
+    notes: z.string().nullable().optional(),
+    confirmedBy: z.string().nullable().optional(),
+    confirmedAt: z.string().nullable().optional(),
+    completedAt: z.string().nullable().optional(),
+    cancelledAt: z.string().nullable().optional(),
+    createdBy: z.string().nullable().optional(),
+    createdAt: z.string().optional(),
+    updatedAt: z.string().optional(),
+  })
+  .passthrough();
+export type TenantSiteVisit = z.infer<typeof TenantSiteVisitSchema>;
+
+export const TenantSiteVisitsResponseSchema = paginatedSchema(
+  TenantSiteVisitSchema,
+);
+export type TenantSiteVisitsResponse = z.infer<
+  typeof TenantSiteVisitsResponseSchema
+>;
 
 // --- Notifications (feat-0005) -------------------------------------------
 
@@ -760,25 +907,53 @@ export const DEALER_STATUSES: DealerStatus[] = [
   "suspended",
 ];
 
+/**
+ * KYC verification state — mirrors the `dealers.kyc_status` CHECK constraint
+ * added by backend migration 027 (`pending` | `verified` | `rejected`, DB
+ * default `pending`).
+ */
+export const DealerKycStatusSchema = z.enum([
+  "pending",
+  "verified",
+  "rejected",
+]);
+export type DealerKycStatus = z.infer<typeof DealerKycStatusSchema>;
+
+export const DEALER_KYC_STATUSES: DealerKycStatus[] = [
+  "pending",
+  "verified",
+  "rejected",
+];
+
 export const DealerSchema = z
   .object({
     id: z.string(),
     tenantId: z.string(),
     name: z.string(),
-    email: z.string().optional(),
-    phone: z.string().optional(),
-    region: z.string().optional(),
+    email: z.string().nullable().optional(),
+    phone: z.string().nullable().optional(),
+    company: z.string().nullable().optional(),
     commissionRate: z.number().optional(),
     status: DealerStatusSchema,
+    // RERA registration id + KYC state (backend feat: dealers.rera_id /
+    // dealers.kyc_status, migration 027). Optional + nullable so dealer rows
+    // written before that migration — and any mock fixtures — still parse.
+    reraId: z.string().nullable().optional(),
+    kycStatus: DealerKycStatusSchema.nullable().optional(),
     createdAt: z.string(),
     updatedAt: z.string(),
   })
   .passthrough();
 export type Dealer = z.infer<typeof DealerSchema>;
 
-export const DealersResponseSchema = z.object({
-  dealers: z.array(DealerSchema),
-});
+export const DealersResponseSchema = z
+  .object({
+    // Backend sends { data: [...] }; older shape sent { dealers: [...] }
+    dealers: z.array(DealerSchema).optional(),
+    data: z.array(DealerSchema).optional(),
+    total: z.number().optional(),
+  })
+  .transform((r) => ({ ...r, dealers: r.dealers ?? r.data ?? [] }));
 export type DealersResponse = z.infer<typeof DealersResponseSchema>;
 
 export const CreateDealerRequestSchema = z.object({
@@ -788,7 +963,7 @@ export const CreateDealerRequestSchema = z.object({
     .email("Enter a valid email address")
     .optional(),
   phone: z.string().optional(),
-  region: z.string().optional(),
+  company: z.string().optional(),
   commissionRate: z
     .number()
     .min(0, "Commission must be 0 or greater")
@@ -801,7 +976,7 @@ export const UpdateDealerRequestSchema = z.object({
   name: z.string().min(1, "Name required").optional(),
   email: z.string().email("Enter a valid email address").optional(),
   phone: z.string().optional(),
-  region: z.string().optional(),
+  company: z.string().optional(),
   commissionRate: z
     .number()
     .min(0, "Commission must be 0 or greater")
@@ -847,6 +1022,10 @@ export const ReportTypeSchema = z.enum([
   "leads_summary",
   "bookings_summary",
   "revenue_summary",
+  "project_wise_sales",
+  "sales_performance",
+  "agent_commission",
+  "collection_report",
 ]);
 export type ReportType = z.infer<typeof ReportTypeSchema>;
 
@@ -858,7 +1037,25 @@ export const REPORT_TYPES: ReportType[] = [
   "leads_summary",
   "bookings_summary",
   "revenue_summary",
+  "project_wise_sales",
+  "sales_performance",
+  "agent_commission",
+  "collection_report",
 ];
+
+export const REPORT_TYPE_LABELS: Record<ReportType, string> = {
+  leads: "Leads",
+  bookings: "Bookings",
+  payments: "Payments",
+  site_visits: "Site Visits",
+  leads_summary: "Leads Summary",
+  bookings_summary: "Bookings Summary",
+  revenue_summary: "Revenue Summary",
+  project_wise_sales: "Project Wise Sales",
+  sales_performance: "Sales Performance",
+  agent_commission: "Agent Commission",
+  collection_report: "Collection Report",
+};
 
 export const ReportFormatSchema = z.enum(["csv", "json"]);
 export type ReportFormat = z.infer<typeof ReportFormatSchema>;
@@ -1140,53 +1337,29 @@ export type UpdateTicketStatusRequest = z.infer<
 
 // --- Workflows (feat-0014) ------------------------------------------------
 
-export const WorkflowTriggerTypeSchema = z.enum([
-  "lead_created",
-  "stage_changed",
-  "booking_created",
+export const WorkflowTriggerEventSchema = z.enum([
+  "lead_stage_changed",
+  "booking_status_changed",
   "payment_due",
   "site_visit_scheduled",
+  "task_due",
 ]);
-export type WorkflowTriggerType = z.infer<typeof WorkflowTriggerTypeSchema>;
+export type WorkflowTriggerEvent = z.infer<typeof WorkflowTriggerEventSchema>;
 
-export const WORKFLOW_TRIGGER_TYPES: WorkflowTriggerType[] = [
-  "lead_created",
-  "stage_changed",
-  "booking_created",
+export const WORKFLOW_TRIGGER_EVENTS: WorkflowTriggerEvent[] = [
+  "lead_stage_changed",
+  "booking_status_changed",
   "payment_due",
   "site_visit_scheduled",
+  "task_due",
 ];
-
-export const WorkflowActionTypeSchema = z.enum([
-  "send_notification",
-  "send_email",
-  "create_task",
-  "update_lead_stage",
-]);
-export type WorkflowActionType = z.infer<typeof WorkflowActionTypeSchema>;
-
-export const WORKFLOW_ACTION_TYPES: WorkflowActionType[] = [
-  "send_notification",
-  "send_email",
-  "create_task",
-  "update_lead_stage",
-];
-
-export const WorkflowActionSchema = z
-  .object({
-    actionType: WorkflowActionTypeSchema,
-    config: z.record(z.string(), z.unknown()).optional(),
-  })
-  .passthrough();
-export type WorkflowAction = z.infer<typeof WorkflowActionSchema>;
 
 export const WorkflowSchema = z
   .object({
     id: z.string(),
     tenantId: z.string().optional(),
     name: z.string(),
-    triggerType: WorkflowTriggerTypeSchema,
-    actions: z.array(WorkflowActionSchema),
+    triggerEvent: WorkflowTriggerEventSchema,
     isActive: z.boolean(),
     createdAt: z.string().optional(),
     updatedAt: z.string().optional(),
@@ -1198,20 +1371,20 @@ export const WorkflowsResponseSchema = paginatedSchema(WorkflowSchema);
 export type WorkflowsResponse = z.infer<typeof WorkflowsResponseSchema>;
 
 export const WorkflowExecutionStatusSchema = z.enum([
-  "success",
-  "failed",
-  "partial",
+  "pending",
   "running",
+  "completed",
+  "failed",
 ]);
 export type WorkflowExecutionStatus = z.infer<
   typeof WorkflowExecutionStatusSchema
 >;
 
 export const WORKFLOW_EXECUTION_STATUSES: WorkflowExecutionStatus[] = [
-  "success",
-  "failed",
-  "partial",
+  "pending",
   "running",
+  "completed",
+  "failed",
 ];
 
 export const WorkflowExecutionSchema = z
@@ -1234,31 +1407,19 @@ export type WorkflowExecutionsResponse = z.infer<
   typeof WorkflowExecutionsResponseSchema
 >;
 
-export const CreateWorkflowActionRequestSchema = z.object({
-  actionType: WorkflowActionTypeSchema,
-  config: z.record(z.string(), z.unknown()).optional(),
-});
-export type CreateWorkflowActionRequest = z.infer<
-  typeof CreateWorkflowActionRequestSchema
->;
-
 export const CreateWorkflowRequestSchema = z.object({
   name: z
     .string()
     .min(1, "Name is required")
     .max(200, "Name must be 200 characters or fewer"),
-  triggerType: WorkflowTriggerTypeSchema,
-  actions: z
-    .array(CreateWorkflowActionRequestSchema)
-    .min(1, "Add at least one action"),
+  triggerEvent: WorkflowTriggerEventSchema,
   isActive: z.boolean().optional(),
 });
 export type CreateWorkflowRequest = z.infer<typeof CreateWorkflowRequestSchema>;
 
 export const UpdateWorkflowRequestSchema = z.object({
   name: z.string().min(1).max(200).optional(),
-  triggerType: WorkflowTriggerTypeSchema.optional(),
-  actions: z.array(CreateWorkflowActionRequestSchema).min(1).optional(),
+  triggerEvent: WorkflowTriggerEventSchema.optional(),
   isActive: z.boolean().optional(),
 });
 export type UpdateWorkflowRequest = z.infer<typeof UpdateWorkflowRequestSchema>;
@@ -1323,9 +1484,11 @@ export const TENANT_PLANS: TenantPlan[] = ["starter", "professional", "enterpris
 export const TenantSchema = z.object({
   id: z.string(),
   name: z.string(),
-  slug: z.string(),
+  slug: z.string().optional(),
   plan: TenantPlanSchema,
   isActive: z.boolean(),
+  maxUsers: z.number().optional(),
+  maxProjects: z.number().optional(),
   createdAt: z.string().optional(),
   updatedAt: z.string().optional(),
 }).passthrough();
@@ -1525,3 +1688,192 @@ export const HoldsResponseSchema = z.object({
   limit: z.number(),
 });
 export type HoldsResponse = z.infer<typeof HoldsResponseSchema>;
+
+// --- Team Users ---------------------------------------------------------------
+
+export const USER_ROLES = ["sales_manager", "sales_agent", "dealer"] as const;
+export type UserRole = typeof USER_ROLES[number];
+
+export const TeamUserSchema = z.object({
+  id: z.string(),
+  email: z.string(),
+  role: z.string(),
+  isActive: z.boolean().optional(),
+  tenantId: z.string().optional(),
+  createdAt: z.string().optional(),
+});
+export type TeamUser = z.infer<typeof TeamUserSchema>;
+
+export const UsersResponseSchema = z.object({
+  data: z.array(TeamUserSchema),
+  total: z.number(),
+});
+export type UsersResponse = z.infer<typeof UsersResponseSchema>;
+
+export const CreateUserRequestSchema = z.object({
+  email: z.string().email("Enter a valid email"),
+  password: z.string().min(8, "Password must be at least 8 characters"),
+  role: z.enum(USER_ROLES),
+});
+export type CreateUserRequest = z.infer<typeof CreateUserRequestSchema>;
+
+// --- Internal AI assistant (Phase 2) --------------------------------------
+// Client-facing shapes for the /api/assistant/chat BFF route. The user's JWT
+// is NEVER part of this payload — the BFF injects it server-side from the
+// httpOnly session cookie.
+
+export const AssistantChatMessageSchema = z.object({
+  role: z.enum(["user", "assistant"]),
+  content: z.string(),
+});
+export type AssistantChatMessage = z.infer<typeof AssistantChatMessageSchema>;
+
+export const AssistantPageContextSchema = z.object({
+  path: z.string().optional(),
+  project_id: z.string().optional(),
+  lead_id: z.string().optional(),
+});
+export type AssistantPageContext = z.infer<typeof AssistantPageContextSchema>;
+
+export const AssistantChatRequestSchema = z.object({
+  session_id: z.string().nullable().optional(),
+  messages: z.array(AssistantChatMessageSchema),
+  page_context: AssistantPageContextSchema.optional(),
+});
+export type AssistantChatRequest = z.infer<typeof AssistantChatRequestSchema>;
+
+export const AssistantChatResponseSchema = z.object({
+  session_id: z.string().nullable().optional(),
+  reply: z.string(),
+  suggested_questions: z.array(z.string()).default([]),
+});
+export type AssistantChatResponse = z.infer<typeof AssistantChatResponseSchema>;
+
+// --- Lead routing (feat-0047) ---------------------------------------------
+// Mirrors reos-backend/src/lead-routing-rules/*:
+//   lead-routing.constants.ts  → ROUTING_MODES, MIN/MAX_RULE_PRIORITY
+//   dto/lead-routing-rule-response.dto.ts → LeadRoutingRuleSchema
+//   dto/create|update|reorder-*.dto.ts    → the request schemas below
+// `source: null` means "any source"; `projectId: null` means "any project".
+// Lower `priority` = evaluated first.
+
+export const ROUTING_MODES = ["round_robin", "rules"] as const;
+export type RoutingMode = (typeof ROUTING_MODES)[number];
+export const RoutingModeSchema = z.enum(ROUTING_MODES);
+
+export const ROUTING_MODE_LABELS: Record<RoutingMode, string> = {
+  round_robin: "Round robin",
+  rules: "Rule based",
+};
+
+export const RoutingModeResponseSchema = z.object({
+  routingMode: RoutingModeSchema,
+});
+export type RoutingModeResponse = z.infer<typeof RoutingModeResponseSchema>;
+
+export const UpdateRoutingModeRequestSchema = z.object({
+  routingMode: RoutingModeSchema,
+});
+export type UpdateRoutingModeRequest = z.infer<
+  typeof UpdateRoutingModeRequestSchema
+>;
+
+/** Priority bounds accepted by the backend DTOs. */
+export const MIN_RULE_PRIORITY = 0;
+export const MAX_RULE_PRIORITY = 10_000;
+
+export const LeadRoutingRuleSchema = z
+  .object({
+    id: z.string(),
+    source: LeadSourceSchema.nullable(),
+    projectId: z.string().nullable(),
+    targetDealerId: z.string(),
+    priority: z.number().int(),
+    isActive: z.boolean(),
+    createdBy: z.string().nullable().optional(),
+    createdAt: z.string().optional(),
+    updatedAt: z.string().optional(),
+  })
+  .passthrough();
+export type LeadRoutingRule = z.infer<typeof LeadRoutingRuleSchema>;
+
+/**
+ * The backend returns a bare array from `GET /lead-routing-rules`; the BFF
+ * wraps it in the usual `{ data, total }` envelope before validating.
+ */
+export const LeadRoutingRulesResponseSchema =
+  paginatedSchema(LeadRoutingRuleSchema);
+export type LeadRoutingRulesResponse = z.infer<
+  typeof LeadRoutingRulesResponseSchema
+>;
+
+export const CreateLeadRoutingRuleRequestSchema = z.object({
+  source: LeadSourceSchema.nullable().optional(),
+  projectId: z.string().uuid("Select a valid project").nullable().optional(),
+  targetDealerId: z.string().uuid("Select an owner"),
+  priority: z
+    .number()
+    .int()
+    .min(MIN_RULE_PRIORITY)
+    .max(MAX_RULE_PRIORITY)
+    .optional(),
+  isActive: z.boolean().optional(),
+});
+export type CreateLeadRoutingRuleRequest = z.infer<
+  typeof CreateLeadRoutingRuleRequestSchema
+>;
+
+/**
+ * PATCH body. `source: null` / `projectId: null` are MEANINGFUL (widen the rule
+ * back to "any") and are distinct from omitting the key, which leaves the
+ * column untouched — so both are nullable AND optional here, and the BFF must
+ * forward an explicit null through untouched.
+ */
+export const UpdateLeadRoutingRuleRequestSchema = z.object({
+  source: LeadSourceSchema.nullable().optional(),
+  projectId: z.string().uuid("Select a valid project").nullable().optional(),
+  targetDealerId: z.string().uuid("Select an owner").optional(),
+  priority: z
+    .number()
+    .int()
+    .min(MIN_RULE_PRIORITY)
+    .max(MAX_RULE_PRIORITY)
+    .optional(),
+  isActive: z.boolean().optional(),
+});
+export type UpdateLeadRoutingRuleRequest = z.infer<
+  typeof UpdateLeadRoutingRuleRequestSchema
+>;
+
+export const ReorderLeadRoutingRuleItemSchema = z.object({
+  id: z.string().uuid(),
+  priority: z.number().int().min(MIN_RULE_PRIORITY).max(MAX_RULE_PRIORITY),
+});
+export type ReorderLeadRoutingRuleItem = z.infer<
+  typeof ReorderLeadRoutingRuleItemSchema
+>;
+
+export const ReorderLeadRoutingRulesRequestSchema = z.object({
+  rules: z.array(ReorderLeadRoutingRuleItemSchema).min(1).max(500),
+});
+export type ReorderLeadRoutingRulesRequest = z.infer<
+  typeof ReorderLeadRoutingRulesRequestSchema
+>;
+
+// --- Bulk CSV lead import -------------------------------------------------
+// Mirrors reos-backend/src/leads/dto/import-csv-result.dto.ts, returned by
+// POST /leads/import/csv (multipart, field `file`). Per-row failures do NOT
+// fail the request: rows land in `rejected` with `row` = spreadsheet line
+// number (header = line 1) and the importer's reason string.
+
+export const ImportCsvRejectionSchema = z.object({
+  row: z.number().int(),
+  reason: z.string(),
+});
+export type ImportCsvRejection = z.infer<typeof ImportCsvRejectionSchema>;
+
+export const ImportCsvResultSchema = z.object({
+  imported: z.number().int().nonnegative(),
+  rejected: z.array(ImportCsvRejectionSchema),
+});
+export type ImportCsvResult = z.infer<typeof ImportCsvResultSchema>;

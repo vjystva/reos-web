@@ -7,8 +7,19 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ErrorBanner } from "@/components/ErrorBanner";
 import { Skeleton } from "@/components/ui/skeleton";
+import { PageHeader } from "@/components/PageHeader";
 import { ProjectCard } from "@/components/ProjectCard";
+import { CreateProjectForm } from "@/components/CreateProjectForm";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { useProjects } from "@/hooks/useProjects";
+import { useCreateProjectMutation } from "@/hooks/useCreateProjectMutation";
+import type { CreateProjectRequest } from "@/types/api";
 
 const PAGE_SIZE = 12;
 
@@ -35,10 +46,14 @@ function ProjectsPagination({
   return (
     <nav
       aria-label="Pagination"
-      className="flex items-center justify-between text-sm text-slate-600"
+      className="flex items-center justify-between text-[11px] text-muted-foreground"
     >
       <span>
-        Page {page} of {totalPages} · {total} projects
+        Page{" "}
+        <span className="font-mono tabular-nums text-foreground">{page}</span> of{" "}
+        <span className="font-mono tabular-nums text-foreground">{totalPages}</span>{" "}
+        · <span className="font-mono tabular-nums text-foreground">{total}</span>{" "}
+        projects
       </span>
       <div className="flex gap-1">
         <Button
@@ -113,15 +128,60 @@ function InventoryContent() {
   const search = params.get("search") ?? "";
   const page = Number(params.get("page") ?? "1") || 1;
 
-  const q = useProjects({ search, page, pageSize: PAGE_SIZE });
+  const [sheetOpen, setSheetOpen] = React.useState(false);
+  const [formError, setFormError] = React.useState<string | null>(null);
+
+  const q = useProjects({ q: search, page, pageSize: PAGE_SIZE });
+  const createMutation = useCreateProjectMutation();
+
+  async function handleCreate(data: CreateProjectRequest) {
+    setFormError(null);
+    try {
+      await createMutation.mutateAsync(data);
+      setSheetOpen(false);
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : "Failed to create project");
+    }
+  }
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold text-slate-900">Inventory</h1>
+    <div className="space-y-3">
+      <PageHeader
+        title="Inventory"
+        subtitle={
+          q.isLoading
+            ? "Projects and unit availability"
+            : `${q.data?.total ?? 0} project${(q.data?.total ?? 0) !== 1 ? "s" : ""} · unit availability by project`
+        }
+        actions={
+          <Button onClick={() => { setSheetOpen(true); setFormError(null); }}>
+            + New project
+          </Button>
+        }
+      />
+
+      <div className="max-w-sm">
+        <ProjectSearch />
       </div>
 
-      <ProjectSearch />
+      <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
+        <SheetContent className="sm:max-w-lg overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle>Create new project</SheetTitle>
+            <SheetDescription>
+              Add a new real estate project to your portfolio.
+            </SheetDescription>
+          </SheetHeader>
+          <div className="mt-6">
+            <CreateProjectForm
+              isSubmitting={createMutation.isPending}
+              error={formError}
+              onSubmit={(data) => void handleCreate(data)}
+              onCancel={() => setSheetOpen(false)}
+            />
+          </div>
+        </SheetContent>
+      </Sheet>
 
       {q.isError ? (
         <ErrorBanner
@@ -129,18 +189,18 @@ function InventoryContent() {
           onRetry={() => q.refetch()}
         />
       ) : q.isLoading ? (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {Array.from({ length: 6 }).map((_, i) => (
-            <Skeleton key={i} className="h-48 w-full" />
+            <Skeleton key={i} className="h-40 w-full" />
           ))}
         </div>
       ) : (q.data?.data ?? []).length === 0 ? (
-        <div className="rounded-md border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500">
+        <div className="rounded-md border border-dashed border-border bg-card p-8 text-center text-xs text-muted-foreground">
           No projects match your search.
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {q.data!.data.map((p) => (
               <ProjectCard key={p.id} project={p} />
             ))}
@@ -161,14 +221,11 @@ export default function InventoryPage() {
     <Suspense
       fallback={
         <div className="space-y-3">
-          <div className="h-8 w-48 animate-pulse rounded bg-slate-200" />
-          <div className="h-10 w-full animate-pulse rounded bg-slate-200" />
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <Skeleton className="h-8 w-48" />
+          <Skeleton className="h-8 w-full max-w-sm" />
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {Array.from({ length: 6 }).map((_, i) => (
-              <div
-                key={i}
-                className="h-48 w-full animate-pulse rounded bg-slate-200"
-              />
+              <Skeleton key={i} className="h-40 w-full" />
             ))}
           </div>
         </div>

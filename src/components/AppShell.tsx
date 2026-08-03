@@ -3,103 +3,175 @@
 import * as React from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { LogOut, LayoutDashboard, ListChecks, Building2, CheckSquare, FileText, Users, BarChart2, MessageSquare, LifeBuoy, GitBranch } from "lucide-react";
+import { LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import { BrandMark } from "@/components/BrandMark";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { GlobalSearch } from "@/components/GlobalSearch";
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarGroup,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarInset,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarProvider,
+  SidebarTrigger,
+  useSidebar,
+} from "@/components/ui/sidebar";
+import {
+  isNavItemActive,
+  roleLabel,
+  tenantLabel,
+  userLabel,
+  visibleGroups,
+  type AppRole,
+} from "@/components/nav-config";
+
+/**
+ * Application chrome: dark-navy collapsible sidebar + slim sticky topbar.
+ *
+ *   <SidebarProvider>            flex row, owns open/collapsed state
+ *     <Sidebar>                  16rem panel → 3rem icon rail → Sheet below lg
+ *     <SidebarInset>             flex-1 column
+ *       <header h-12>            trigger · identity · search · logout
+ *       <div flex-1 p-4>         page content
+ *
+ * There is no mobile tab bar — below `lg` the `Sidebar` primitive swaps itself
+ * for a `Sheet` drawer opened by the topbar trigger.
+ */
 
 interface AppShellProps {
   children: React.ReactNode;
 }
 
-const NAV = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/dashboard/inventory", label: "Inventory", icon: Building2 },
-  { href: "/dashboard/pipeline", label: "Pipeline", icon: ListChecks },
-  { href: "/dashboard/dealers", label: "Dealers", icon: Users },
-  { href: "/dashboard/tasks", label: "Tasks", icon: CheckSquare },
-  { href: "/dashboard/documents", label: "Documents", icon: FileText },
-  { href: "/dashboard/reports", label: "Reports", icon: BarChart2 },
-  { href: "/dashboard/communications", label: "Communications", icon: MessageSquare },
-  { href: "/dashboard/support", label: "Support", icon: LifeBuoy },
-  { href: "/dashboard/workflows", label: "Workflows", icon: GitBranch },
-];
+export type { AppRole };
+
+/**
+ * Sidebar-header brand: the shared `BrandMark` bound to sidebar state, so the
+ * wordmark hides when the rail is icon-collapsed and clicking closes the mobile
+ * sheet. The markup itself lives in `@/components/BrandMark` — `MinimalShell`
+ * renders the same block in its topbar.
+ */
+function SidebarBrand() {
+  const { state, isMobile, setOpenMobile } = useSidebar();
+  const collapsed = state === "collapsed" && !isMobile;
+
+  return (
+    <BrandMark
+      tone="sidebar"
+      collapsed={collapsed}
+      onNavigate={() => setOpenMobile(false)}
+    />
+  );
+}
+
+/** Grouped nav. A group renders only when the role can see ≥1 of its items. */
+function AppNav({ role }: { role: AppRole | null }) {
+  const pathname = usePathname();
+  const { setOpenMobile } = useSidebar();
+  const groups = React.useMemo(() => visibleGroups(role), [role]);
+
+  return (
+    <nav aria-label="Main navigation" className="flex flex-col gap-2">
+      {groups.map((group) => (
+        <SidebarGroup key={group.label}>
+          <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
+          <SidebarMenu>
+            {group.items.map((item) => {
+              const Icon = item.icon;
+              const active = isNavItemActive(pathname ?? "", item.href);
+              return (
+                <SidebarMenuItem key={item.href}>
+                  <SidebarMenuButton asChild isActive={active} tooltip={item.label}>
+                    <Link href={item.href} onClick={() => setOpenMobile(false)}>
+                      <Icon aria-hidden="true" />
+                      <span>{item.label}</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              );
+            })}
+          </SidebarMenu>
+        </SidebarGroup>
+      ))}
+    </nav>
+  );
+}
+
+/** Two-line topbar identity: tenant, then `user · role`. */
+function IdentityBlock({
+  tenantName,
+  email,
+  role,
+}: {
+  tenantName: string | null;
+  email: string | null;
+  role: AppRole | null;
+}) {
+  const scope = roleLabel(role);
+  return (
+    <div className="flex min-w-0 flex-col justify-center leading-tight">
+      <span className="truncate text-xs font-semibold text-foreground">
+        {tenantLabel(tenantName)}
+      </span>
+      <span className="truncate text-[11px] text-muted-foreground">
+        {userLabel(email)}
+        {scope ? ` · ${scope}` : ""}
+      </span>
+    </div>
+  );
+}
 
 export function AppShell({ children }: AppShellProps) {
-  const pathname = usePathname();
   const router = useRouter();
+
+  // Current user role, via the shared hook (nav shows all tabs while loading).
+  const { data: currentUser } = useCurrentUser();
+  const role = (currentUser?.role ?? null) as AppRole | null;
 
   async function logout() {
     try {
       await fetch("/api/auth/logout", { method: "POST" });
     } catch {
-      // Even on failure, push to login — cookies are server-set, the client
-      // can do nothing useful with a logout error.
+      // proceed to login even on error — cookie is server-set
     }
     router.push("/login");
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-slate-50">
-      <header className="flex h-14 items-center justify-between border-b border-slate-200 bg-white px-4 sm:px-6">
-        <div className="flex items-center gap-6">
-          <Link href="/dashboard" className="text-lg font-bold text-slate-900">
-            REOS
-          </Link>
-          <nav aria-label="Main navigation" className="hidden sm:flex gap-1">
-            {NAV.map((item) => {
-              const active = pathname === item.href;
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  aria-current={active ? "page" : undefined}
-                  className={cn(
-                    "rounded-md px-3 py-1.5 text-sm font-medium",
-                    active
-                      ? "bg-slate-900 text-white"
-                      : "text-slate-600 hover:bg-slate-100",
-                  )}
-                >
-                  {item.label}
-                </Link>
-              );
-            })}
-          </nav>
-        </div>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={logout}
-          aria-label="Log out"
-        >
-          <LogOut className="h-4 w-4" aria-hidden="true" />
-          <span className="hidden sm:inline">Logout</span>
-        </Button>
-      </header>
-      <main className="flex-1 px-4 py-6 sm:px-6">{children}</main>
-      <nav
-        aria-label="Mobile navigation"
-        className="flex sm:hidden border-t border-slate-200 bg-white"
-      >
-        {NAV.map((item) => {
-          const Icon = item.icon;
-          const active = pathname === item.href;
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              aria-current={active ? "page" : undefined}
-              className={cn(
-                "flex flex-1 flex-col items-center gap-1 py-2 text-xs",
-                active ? "text-slate-900" : "text-slate-500",
-              )}
-            >
-              <Icon className="h-4 w-4" aria-hidden="true" />
-              {item.label}
-            </Link>
-          );
-        })}
-      </nav>
-    </div>
+    <SidebarProvider>
+      <Sidebar>
+        <SidebarHeader>
+          <SidebarBrand />
+        </SidebarHeader>
+        <SidebarContent>
+          <AppNav role={role} />
+        </SidebarContent>
+      </Sidebar>
+
+      <SidebarInset>
+        <header className="sticky top-0 z-20 flex h-12 shrink-0 items-center gap-2 border-b border-border bg-card px-3">
+          <SidebarTrigger className="-ml-1 shrink-0" />
+          <IdentityBlock
+            tenantName={currentUser?.tenantName ?? null}
+            email={currentUser?.email ?? null}
+            role={role}
+          />
+          <div className="ml-auto flex shrink-0 items-center gap-1.5">
+            <GlobalSearch />
+            <Button variant="ghost" size="sm" onClick={logout} aria-label="Log out">
+              <LogOut className="h-3.5 w-3.5" aria-hidden="true" />
+              <span className="hidden sm:inline">Logout</span>
+            </Button>
+          </div>
+        </header>
+
+        <div className="flex-1 p-4">{children}</div>
+      </SidebarInset>
+    </SidebarProvider>
   );
 }

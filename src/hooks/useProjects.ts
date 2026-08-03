@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ProjectsResponseSchema, type ProjectsResponse } from "@/types/api";
 
 export interface UseProjectsParams {
-  search?: string;
+  q?: string;
   page?: string | number;
   pageSize?: string | number;
 }

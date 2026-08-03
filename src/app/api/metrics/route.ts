@@ -6,99 +6,68 @@ import { isDemoRequest, DEMO_METRICS } from "@/lib/demo";
 /**
  * Fan-out aggregator for the dashboard metrics cards.
  *
- * Six independent upstream calls run via Promise.allSettled. Each fulfilled
- * slot supplies a `total` integer; each rejected slot becomes `null` and its
- * label is appended to `failed[]`.
+ * Fetches leads, bookings, and unit counts in parallel. Unit counts come from
+ * /analytics/overview which returns availableUnits/bookedUnits — the
+ * /units endpoint is project-scoped and cannot return global counts.
  *
- *   - 200 + failed=[]               → all six succeeded
- *   - 200 + failed=[some]           → partial: client renders last-good per card
- *   - 502 + failed=[all six labels] → catastrophic
- *
- * This is deliberately Promise.allSettled (not Promise.all) so a single
- * rejection does not discard the other five successful results.
+ * Promise.allSettled means a single failure never discards the others.
  */
-
-type SlotKey =
-  | "totalLeads"
-  | "hotLeads"
-  | "bookings"
-  | "unitsAvailable"
-  | "unitsBlocked"
-  | "unitsBooked";
-
-interface Slot {
-  key: SlotKey;
-  path: string;
-}
-
-const SLOTS: Slot[] = [
-  { key: "totalLeads", path: "/leads?pageSize=1" },
-  { key: "hotLeads", path: "/leads?temperature=hot&pageSize=1" },
-  { key: "bookings", path: "/bookings?pageSize=1" },
-  { key: "unitsAvailable", path: "/units?status=available&pageSize=1" },
-  { key: "unitsBlocked", path: "/units?status=blocked&pageSize=1" },
-  { key: "unitsBooked", path: "/units?status=booked&pageSize=1" },
-];
-
-async function fetchTotal(req: NextRequest, path: string): Promise<number> {
-  const res = await proxyFetch(req, path);
-  if (!res.ok) {
-    throw new Error(`upstream ${res.status} for ${path}`);
-  }
-  const body = (await res.json()) as { total?: unknown };
-  if (typeof body?.total !== "number") {
-    throw new Error(`missing total in upstream response for ${path}`);
-  }
-  return body.total;
-}
 
 export async function GET(req: NextRequest): Promise<NextResponse> {
   if (isDemoRequest(req)) return NextResponse.json(DEMO_METRICS, { status: 200 });
 
-  const settled = await Promise.allSettled(
-    SLOTS.map((slot) => fetchTotal(req, slot.path)),
-  );
+  const [leadsAll, leadsHot, bookings, overview] = await Promise.allSettled([
+    proxyFetch(req, "/leads?pageSize=1").then(async (r) => {
+      if (!r.ok) throw new Error(`leads ${r.status}`);
+      const b = await r.json() as { total?: number };
+      if (typeof b.total !== "number") throw new Error("no total");
+      return b.total;
+    }),
+    proxyFetch(req, "/leads?temperature=hot&pageSize=1").then(async (r) => {
+      if (!r.ok) throw new Error(`hot_leads ${r.status}`);
+      const b = await r.json() as { total?: number };
+      if (typeof b.total !== "number") throw new Error("no total");
+      return b.total;
+    }),
+    proxyFetch(req, "/bookings?pageSize=1").then(async (r) => {
+      if (!r.ok) throw new Error(`bookings ${r.status}`);
+      const b = await r.json() as { total?: number };
+      if (typeof b.total !== "number") throw new Error("no total");
+      return b.total;
+    }),
+    proxyFetch(req, "/analytics/overview").then(async (r) => {
+      if (!r.ok) throw new Error(`overview ${r.status}`);
+      return r.json() as Promise<{ availableUnits?: number; bookedUnits?: number; totalUnits?: number }>;
+    }),
+  ]);
 
   const failed: string[] = [];
-  const results: Record<SlotKey, number | null> = {
-    totalLeads: null,
-    hotLeads: null,
-    bookings: null,
-    unitsAvailable: null,
-    unitsBlocked: null,
-    unitsBooked: null,
-  };
 
-  settled.forEach((entry, i) => {
-    const slot = SLOTS[i];
-    if (entry.status === "fulfilled") {
-      results[slot.key] = entry.value;
-    } else {
-      failed.push(slot.key);
-    }
-  });
+  function val<T>(result: PromiseSettledResult<T>, label: string): T | null {
+    if (result.status === "fulfilled") return result.value;
+    failed.push(label);
+    return null;
+  }
+
+  const ov = val(overview, "unitsAvailable");
 
   const body = {
-    totalLeads: results.totalLeads,
-    hotLeads: results.hotLeads,
-    bookings: results.bookings,
+    totalLeads: val(leadsAll, "totalLeads"),
+    hotLeads: val(leadsHot, "hotLeads"),
+    bookings: val(bookings, "bookings"),
     units: {
-      available: results.unitsAvailable,
-      blocked: results.unitsBlocked,
-      booked: results.unitsBooked,
+      available: ov?.availableUnits ?? null,
+      blocked: null,
+      booked: ov?.bookedUnits ?? null,
     },
     failed,
   };
 
-  const status = failed.length === SLOTS.length ? 502 : 200;
+  const status = failed.length >= 4 ? 502 : 200;
 
-  // Self-check: serialise via Zod so any drift is caught loud.
   const parsed = MetricsResponseSchema.safeParse(body);
   if (!parsed.success) {
-    return NextResponse.json(
-      { error: "metrics_shape_mismatch" },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: "metrics_shape_mismatch" }, { status: 500 });
   }
   return NextResponse.json(parsed.data, { status });
 }

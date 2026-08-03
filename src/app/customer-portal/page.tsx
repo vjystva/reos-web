@@ -149,7 +149,7 @@ export default function CustomerPortalPage() {
 
   if (isLoading) {
     return (
-      <div style={{ padding: 32, textAlign: "center", color: "#6b7280" }}>
+      <div className="p-8 text-center text-muted-foreground">
         Loading your bookings…
       </div>
     );
@@ -157,16 +157,7 @@ export default function CustomerPortalPage() {
 
   if (isError) {
     return (
-      <div
-        style={{
-          padding: 32,
-          textAlign: "center",
-          color: "#dc2626",
-          background: "#fef2f2",
-          borderRadius: 8,
-          margin: 32,
-        }}
-      >
+      <div className="m-8 rounded-lg bg-destructive/10 p-8 text-center text-destructive">
         Failed to load bookings.{" "}
         {error instanceof Error ? error.message : "Unknown error."}
       </div>
@@ -174,29 +165,18 @@ export default function CustomerPortalPage() {
   }
 
   return (
-    <div style={{ maxWidth: 800, margin: "0 auto", padding: "32px 16px" }}>
-      <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 4 }}>
-        My Bookings
-      </h1>
-      <p style={{ color: "#6b7280", marginBottom: 28, fontSize: 14 }}>
+    <div className="mx-auto w-full max-w-3xl px-4 py-6">
+      <h1 className="text-2xl font-bold tracking-tight">My Bookings</h1>
+      <p className="mb-7 mt-1 text-sm text-muted-foreground">
         Track your property purchases and payment progress.
       </p>
 
       {!bookings || bookings.length === 0 ? (
-        <div
-          style={{
-            textAlign: "center",
-            padding: 48,
-            color: "#9ca3af",
-            background: "#f9fafb",
-            borderRadius: 8,
-            border: "1px dashed #e5e7eb",
-          }}
-        >
+        <div className="rounded-lg border border-dashed border-border bg-muted/40 p-12 text-center text-muted-foreground">
           No bookings found.
         </div>
       ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <div className="flex flex-col gap-4">
           {bookings.map((b) => (
             <BookingCard key={b.id} booking={b} />
           ))}

@@ -2,8 +2,12 @@
 
 import * as React from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
+import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import type { Tower } from "@/types/api";
+
+const HEADING =
+  "text-[11px] font-semibold uppercase tracking-wider text-muted-foreground";
 
 interface TowerSidebarProps {
   towers: Tower[];
@@ -45,14 +49,12 @@ export function TowerSidebar({ towers, isLoading, hidden }: TowerSidebarProps) {
     return (
       <aside
         aria-label="Towers"
-        className="w-full sm:w-48 sm:shrink-0 space-y-2"
+        className="w-full space-y-1.5 sm:w-44 sm:shrink-0"
       >
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-          Towers
-        </h3>
-        <div className="h-8 w-full animate-pulse rounded bg-slate-200" />
-        <div className="h-8 w-full animate-pulse rounded bg-slate-200" />
-        <div className="h-8 w-full animate-pulse rounded bg-slate-200" />
+        <h3 className={HEADING}>Towers</h3>
+        <Skeleton className="h-9 w-full" />
+        <Skeleton className="h-9 w-full" />
+        <Skeleton className="h-9 w-full" />
       </aside>
     );
   }
@@ -61,12 +63,10 @@ export function TowerSidebar({ towers, isLoading, hidden }: TowerSidebarProps) {
     return (
       <aside
         aria-label="Towers"
-        className="w-full sm:w-48 sm:shrink-0 space-y-2"
+        className="w-full space-y-1.5 sm:w-44 sm:shrink-0"
       >
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-          Towers
-        </h3>
-        <p className="text-sm text-slate-500">No towers configured.</p>
+        <h3 className={HEADING}>Towers</h3>
+        <p className="text-xs text-muted-foreground">No towers configured.</p>
       </aside>
     );
   }
@@ -74,12 +74,10 @@ export function TowerSidebar({ towers, isLoading, hidden }: TowerSidebarProps) {
   return (
     <aside
       aria-label="Towers"
-      className="w-full sm:w-48 sm:shrink-0 space-y-2"
+      className="w-full space-y-1.5 sm:w-44 sm:shrink-0"
     >
-      <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-        Towers
-      </h3>
-      <ul className="flex sm:block gap-2 sm:gap-0 overflow-x-auto sm:overflow-visible">
+      <h3 className={HEADING}>Towers</h3>
+      <ul className="flex gap-1.5 overflow-x-auto sm:block sm:gap-0 sm:overflow-visible">
         {towers.map((t) => {
           const active = t.id === selected;
           return (
@@ -89,21 +87,26 @@ export function TowerSidebar({ towers, isLoading, hidden }: TowerSidebarProps) {
                 onClick={() => selectTower(t.id)}
                 aria-pressed={active}
                 className={cn(
-                  "block w-full whitespace-nowrap rounded-md px-3 py-2 text-left text-sm",
+                  "block w-full whitespace-nowrap rounded-md border px-2.5 py-1.5 text-left text-xs transition-colors",
                   active
-                    ? "bg-slate-900 text-white"
-                    : "bg-white text-slate-700 hover:bg-slate-100",
+                    ? "border-primary bg-primary text-primary-foreground"
+                    : "border-border bg-card text-foreground hover:bg-muted/60",
                 )}
               >
                 <span className="font-medium">{t.name}</span>
                 {typeof t.totalFloors === "number" ? (
                   <span
                     className={cn(
-                      "block text-xs",
-                      active ? "text-slate-300" : "text-slate-500",
+                      "block text-[11px]",
+                      active
+                        ? "text-primary-foreground/70"
+                        : "text-muted-foreground",
                     )}
                   >
-                    {t.totalFloors} floors
+                    <span className="font-mono tabular-nums">
+                      {t.totalFloors}
+                    </span>{" "}
+                    floors
                   </span>
                 ) : null}
               </button>

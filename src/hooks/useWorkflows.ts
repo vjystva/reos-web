@@ -24,10 +24,8 @@ async function fetchWorkflows(
     throw new Error("unauthorized");
   }
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: "unknown" }));
-    throw new Error(
-      (err as { error?: string }).error ?? "Failed to fetch workflows",
-    );
+    const err = await res.json().catch(() => ({})) as { message?: string; error?: string };
+    throw new Error(err.message ?? err.error ?? "Failed to fetch workflows");
   }
   return res.json() as Promise<WorkflowsResponse>;
 }

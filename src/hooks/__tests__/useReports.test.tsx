@@ -110,6 +110,7 @@ describe("ReportJobSchema", () => {
   });
 
   test("rejects job missing required jobId", () => {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { jobId: _omit, ...noId } = SAMPLE_JOB;
     const result = ReportJobSchema.safeParse(noId);
     expect(result.success).toBe(false);

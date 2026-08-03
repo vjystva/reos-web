@@ -3,9 +3,17 @@
 import * as React from "react";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { TemperatureBadge } from "@/components/TemperatureBadge";
-import { Badge } from "@/components/ui/badge";
-import { SkeletonRow } from "@/components/SkeletonCard";
-import { stageLabel, formatDate } from "@/lib/utils";
+import { LeadStageBadge } from "@/components/LeadStageBadge";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { formatDate } from "@/lib/utils";
 import type { Lead } from "@/types/api";
 
 interface LeadTableProps {
@@ -18,13 +26,18 @@ interface LeadTableProps {
 
 type SortKey = "name" | "aiScore" | "createdAt";
 
-const COLUMNS: { key: string; label: string; sortKey?: SortKey }[] = [
+const COLUMNS: {
+  key: string;
+  label: string;
+  sortKey?: SortKey;
+  numeric?: boolean;
+}[] = [
   { key: "name", label: "Name", sortKey: "name" },
   { key: "stage", label: "Stage" },
   { key: "temperature", label: "Temp" },
-  { key: "score", label: "Score", sortKey: "aiScore" },
+  { key: "score", label: "Score", sortKey: "aiScore", numeric: true },
   { key: "dealer", label: "Dealer" },
-  { key: "createdAt", label: "Created", sortKey: "createdAt" },
+  { key: "createdAt", label: "Created", sortKey: "createdAt", numeric: true },
 ];
 
 export function LeadTable({
@@ -62,105 +75,110 @@ export function LeadTable({
   }
 
   return (
-    <div className="overflow-x-auto rounded-md border border-slate-200 bg-white">
-      <table role="grid" className="min-w-full divide-y divide-slate-200 text-sm">
-        <thead className="bg-slate-50">
-          <tr>
-            {COLUMNS.map((col) => {
-              const active = enableSort && col.sortKey === sort;
-              const ariaSort: "ascending" | "descending" | "none" = active
-                ? order === "asc"
-                  ? "ascending"
-                  : "descending"
-                : "none";
-              return (
-                <th
-                  key={col.key}
-                  scope="col"
-                  aria-sort={col.sortKey ? ariaSort : undefined}
-                  className="px-4 py-2 text-left font-medium text-slate-600"
-                >
-                  {enableSort && col.sortKey ? (
-                    <button
-                      type="button"
-                      onClick={() => toggleSort(col.sortKey!)}
-                      className="inline-flex items-center gap-1 hover:text-slate-900"
-                    >
-                      {col.label}
-                      <span aria-hidden="true">
-                        {active ? (order === "asc" ? "▲" : "▼") : "↕"}
-                      </span>
-                    </button>
-                  ) : (
-                    col.label
-                  )}
-                </th>
-              );
-            })}
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-slate-100">
-          {isError ? (
-            <tr>
-              <td
-                colSpan={COLUMNS.length}
-                className="px-4 py-6 text-center text-sm text-red-700"
+    <Table role="grid">
+      <TableHeader>
+        <TableRow className="hover:bg-transparent">
+          {COLUMNS.map((col) => {
+            const active = enableSort && col.sortKey === sort;
+            const ariaSort: "ascending" | "descending" | "none" = active
+              ? order === "asc"
+                ? "ascending"
+                : "descending"
+              : "none";
+            return (
+              <TableHead
+                key={col.key}
+                numeric={col.numeric}
+                aria-sort={col.sortKey ? ariaSort : undefined}
               >
-                Failed to load leads.
-              </td>
-            </tr>
-          ) : isLoading ? (
-            Array.from({ length: 6 }).map((_, i) => (
-              <SkeletonRow key={i} cols={COLUMNS.length} />
-            ))
-          ) : leads.length === 0 ? (
-            <tr>
-              <td
-                colSpan={COLUMNS.length}
-                className="px-4 py-6 text-center text-sm text-slate-500"
-              >
-                No leads match your filters.
-              </td>
-            </tr>
-          ) : (
-            leads.map((lead) => (
-              <tr
-                key={lead.id}
-                tabIndex={0}
-                role="button"
-                aria-label={`Open detail for ${lead.name}`}
-                onClick={() => openLead(lead.id)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    openLead(lead.id);
-                  }
-                }}
-                className="cursor-pointer hover:bg-slate-50 focus:bg-slate-100 focus:outline-none"
-              >
-                <td className="px-4 py-3 font-medium text-slate-900">
-                  {lead.name}
-                </td>
-                <td className="px-4 py-3 text-slate-700">
-                  {stageLabel(lead.stage)}
-                </td>
-                <td className="px-4 py-3">
-                  <TemperatureBadge temperature={lead.temperature} />
-                </td>
-                <td className="px-4 py-3">
-                  <Badge variant="secondary">{lead.aiScore ?? "—"}</Badge>
-                </td>
-                <td className="px-4 py-3 text-slate-700">
-                  {lead.assignedDealer?.name ?? "—"}
-                </td>
-                <td className="px-4 py-3 text-slate-500">
-                  {formatDate(lead.createdAt)}
-                </td>
-              </tr>
-            ))
-          )}
-        </tbody>
-      </table>
-    </div>
+                {enableSort && col.sortKey ? (
+                  <button
+                    type="button"
+                    onClick={() => toggleSort(col.sortKey!)}
+                    className={`inline-flex items-center gap-1 transition-colors hover:text-foreground ${
+                      active ? "text-foreground" : ""
+                    }`}
+                  >
+                    {col.label}
+                    <span aria-hidden="true" className="text-[9px]">
+                      {active ? (order === "asc" ? "▲" : "▼") : "↕"}
+                    </span>
+                  </button>
+                ) : (
+                  col.label
+                )}
+              </TableHead>
+            );
+          })}
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {isError ? (
+          <TableRow className="hover:bg-transparent">
+            <TableCell
+              colSpan={COLUMNS.length}
+              className="py-6 text-center text-xs text-destructive"
+            >
+              Failed to load leads.
+            </TableCell>
+          </TableRow>
+        ) : isLoading ? (
+          Array.from({ length: 6 }).map((_, i) => (
+            <TableRow key={i} className="hover:bg-transparent">
+              {COLUMNS.map((col) => (
+                <TableCell key={col.key}>
+                  <Skeleton className="h-3 w-full" />
+                </TableCell>
+              ))}
+            </TableRow>
+          ))
+        ) : leads.length === 0 ? (
+          <TableRow className="hover:bg-transparent">
+            <TableCell
+              colSpan={COLUMNS.length}
+              className="py-6 text-center text-xs text-muted-foreground"
+            >
+              No leads match your filters.
+            </TableCell>
+          </TableRow>
+        ) : (
+          leads.map((lead) => (
+            <TableRow
+              key={lead.id}
+              tabIndex={0}
+              role="button"
+              aria-label={`Open detail for ${lead.name}`}
+              onClick={() => openLead(lead.id)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  openLead(lead.id);
+                }
+              }}
+              className="cursor-pointer focus:bg-muted/60 focus:outline-none"
+            >
+              <TableCell className="font-medium text-foreground">
+                {lead.name}
+              </TableCell>
+              <TableCell>
+                <LeadStageBadge stage={lead.stage} />
+              </TableCell>
+              <TableCell>
+                <TemperatureBadge temperature={lead.temperature} />
+              </TableCell>
+              <TableCell numeric className="font-semibold text-foreground">
+                {lead.aiScore ?? "—"}
+              </TableCell>
+              <TableCell className="text-muted-foreground">
+                {lead.assignedDealer?.name ?? "—"}
+              </TableCell>
+              <TableCell numeric className="text-muted-foreground">
+                {formatDate(lead.createdAt)}
+              </TableCell>
+            </TableRow>
+          ))
+        )}
+      </TableBody>
+    </Table>
   );
 }

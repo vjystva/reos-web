@@ -23,10 +23,10 @@ export function DealerCard({ dealer, onEdit }: DealerCardProps) {
           <h3 className="text-sm font-semibold text-slate-900 break-words">
             {dealer.name}
           </h3>
-          {dealer.region ? (
+          {dealer.company ? (
             <p className="mt-0.5 inline-flex items-center gap-1 text-xs text-slate-500">
               <MapPin className="h-3 w-3" aria-hidden="true" />
-              {dealer.region}
+              {dealer.company}
             </p>
           ) : null}
         </div>

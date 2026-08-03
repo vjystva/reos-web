@@ -19,10 +19,9 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
   if (!upstream.ok) {
-    return NextResponse.json(
-      { error: "upstream_error" },
-      { status: upstream.status },
-    );
+    let errBody: unknown = { error: "upstream_error" };
+    try { errBody = await upstream.json(); } catch { /* keep default */ }
+    return NextResponse.json(errBody, { status: upstream.status });
   }
 
   let json: unknown;

@@ -3,7 +3,6 @@ import { renderHook, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import React from "react";
 import {
-  useLeadPipeline,
   useUpdateLeadStatus,
   PIPELINE_STATUSES,
   normaliseStatus,
@@ -18,9 +17,10 @@ function makeWrapper() {
       mutations: { retry: false },
     },
   });
-  return ({ children }: { children: React.ReactNode }) => (
+  const Wrapper = ({ children }: { children: React.ReactNode }) => (
     <QueryClientProvider client={qc}>{children}</QueryClientProvider>
   );
+  return Wrapper;
 }
 
 function makeLead(overrides: Partial<Lead> = {}): Lead {

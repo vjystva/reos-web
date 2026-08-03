@@ -92,7 +92,9 @@ describe("refreshOrRedirect", () => {
   });
 
   it("concurrent callers share one refresh attempt", async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let resolveJson: (value: any) => void;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const deferredJson = new Promise<any>((resolve) => {
       resolveJson = resolve;
     });

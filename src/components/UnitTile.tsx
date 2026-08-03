@@ -2,17 +2,10 @@
 
 import * as React from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import { cn } from "@/lib/utils";
+import { cn, inr } from "@/lib/utils";
+import { unitStatusDot, unitStatusLabel } from "@/lib/unitTone";
 import type { Unit } from "@/types/api";
 import { UnitStatusBadge } from "@/components/UnitStatusBadge";
-
-const STATUS_DOT: Record<string, string> = {
-  available: "bg-green-600",
-  blocked: "bg-amber-500",
-  booked: "bg-blue-600",
-  sold: "bg-slate-700",
-  held: "bg-slate-400",
-};
 
 interface UnitTileProps {
   unit: Unit;
@@ -30,9 +23,9 @@ export function UnitTile({ unit }: UnitTileProps) {
   }
 
   const status = (unit.status ?? "").toLowerCase();
-  const dot = STATUS_DOT[status] ?? "bg-slate-400";
-  const bhk =
-    typeof unit.bedrooms === "number" ? `${unit.bedrooms} BHK` : null;
+  const bhk = typeof unit.bedrooms === "number" ? `${unit.bedrooms} BHK` : null;
+  const carpet = unit.areaSqft ?? unit.area ?? null;
+  const price = unit.effectivePrice ?? unit.listPrice ?? null;
 
   return (
     <button
@@ -40,22 +33,40 @@ export function UnitTile({ unit }: UnitTileProps) {
       onClick={open}
       aria-label={`Unit ${unit.unitNumber ?? unit.id}${
         typeof unit.floor === "number" ? `, Floor ${unit.floor}` : ""
-      }${bhk ? `, ${bhk}` : ""}, ${status || "unknown"}`}
+      }${bhk ? `, ${bhk}` : ""}, ${unitStatusLabel(status)}`}
       className={cn(
-        "flex min-h-[88px] flex-col items-start gap-1 rounded-md border border-slate-200 bg-white p-2 text-left transition-colors hover:border-slate-400 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400",
+        "flex min-h-[104px] flex-col items-start gap-1 rounded-md border border-border bg-card p-2 text-left transition-colors",
+        "hover:border-foreground/20 hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background",
       )}
     >
-      <span className="flex items-center gap-1.5 text-sm font-semibold text-slate-900">
+      <span className="flex items-center gap-1.5 font-mono text-xs font-semibold tabular-nums text-foreground">
         <span
           aria-hidden="true"
-          className={cn("h-2 w-2 rounded-full", dot)}
+          className={cn("h-1.5 w-1.5 rounded-full", unitStatusDot(status))}
         />
         {unit.unitNumber ?? unit.id}
       </span>
-      <span className="text-xs text-slate-500">
+
+      <span className="text-[11px] text-muted-foreground">
         {typeof unit.floor === "number" ? `Flr ${unit.floor}` : "—"}
+        {bhk ? ` · ${bhk}` : ""}
       </span>
-      {bhk ? <span className="text-xs text-slate-500">{bhk}</span> : null}
+
+      <span className="text-[11px] text-muted-foreground">
+        {carpet != null ? (
+          <span className="font-mono tabular-nums text-foreground">
+            {carpet.toLocaleString("en-IN")}
+          </span>
+        ) : (
+          "—"
+        )}{" "}
+        sqft
+      </span>
+
+      <span className="font-mono text-[11px] font-semibold tabular-nums text-foreground">
+        {price != null ? inr(price) : "—"}
+      </span>
+
       <UnitStatusBadge status={unit.status} className="mt-auto" />
     </button>
   );

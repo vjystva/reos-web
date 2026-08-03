@@ -9,9 +9,10 @@ function wrapper() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false, retryDelay: 0 } } });
   // Override any per-query retry settings so error tests don't time out
   qc.setQueryDefaults(["dealers"], { retry: false });
-  return ({ children }: { children: React.ReactNode }) => (
+  const Wrapper = ({ children }: { children: React.ReactNode }) => (
     <QueryClientProvider client={qc}>{children}</QueryClientProvider>
   );
+  return Wrapper;
 }
 
 function mockFetch(body: unknown, ok = true, status = ok ? 200 : 400) {

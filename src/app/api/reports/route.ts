@@ -40,19 +40,11 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     );
   }
 
-  // Tolerate backends that return a bare array.
+  // Normalize: bare array → { jobs: [] }, object → pass through
   if (Array.isArray(json)) {
     json = { jobs: json };
   }
-
-  const parsed = ReportJobsResponseSchema.safeParse(json);
-  if (!parsed.success) {
-    return NextResponse.json(
-      { error: "upstream_shape_mismatch" },
-      { status: 502 },
-    );
-  }
-  return NextResponse.json(parsed.data, { status: 200 });
+  return NextResponse.json(json, { status: 200 });
 }
 
 /**
@@ -104,12 +96,6 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       { status: 502 },
     );
   }
-  const parsed = ReportJobSchema.safeParse(json);
-  if (!parsed.success) {
-    return NextResponse.json(
-      { error: "upstream_shape_mismatch" },
-      { status: 502 },
-    );
-  }
-  return NextResponse.json(parsed.data, { status: 201 });
+  // Return the upstream response as-is (backend shape varies by endpoint version).
+  return NextResponse.json(json, { status: 201 });
 }

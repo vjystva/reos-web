@@ -25,8 +25,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json(getDemoPaymentSchedule(bookingId), { status: 200 });
   }
 
-  const qs = url.search;
-  const upstream = await proxyFetch(req, `/payment-schedules${qs}`);
+  const upstream = await proxyFetch(req, `/bookings/${encodeURIComponent(bookingId)}/payment-schedule`);
 
   if (upstream.status === 401) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });

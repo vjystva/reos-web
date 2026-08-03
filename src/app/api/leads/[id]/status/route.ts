@@ -34,13 +34,14 @@ export async function PATCH(
     );
   }
 
+  // Backend uses POST /leads/:id/stage with { toStage }
   const upstream = await proxyFetch(
     req,
-    `/leads/${encodeURIComponent(id)}/status`,
+    `/leads/${encodeURIComponent(id)}/stage`,
     {
-      method: "PATCH",
+      method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(parsed.data),
+      body: JSON.stringify({ toStage: parsed.data.status }),
     },
   );
 

@@ -51,8 +51,9 @@ export default function CommissionsPage() {
   const totalPending = totalByStatus(commissions, "pending") + totalByStatus(commissions, "approved");
   const totalPaid = totalByStatus(commissions, "paid");
 
+  // Padding comes from AppShell's content column (p-4).
   return (
-    <div className="p-6 max-w-6xl mx-auto">
+    <div className="max-w-6xl mx-auto">
       <h1 className="text-xl font-semibold text-gray-900 mb-6">Commissions</h1>
 
       <div className="grid grid-cols-3 gap-4 mb-6">

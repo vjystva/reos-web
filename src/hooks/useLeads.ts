@@ -6,10 +6,10 @@ import { LeadsResponseSchema, type LeadsResponse } from "@/types/api";
 export interface UseLeadsParams {
   stage?: string;
   temperature?: string;
-  dealer?: string;
-  search?: string;
-  sort?: string;
-  order?: string;
+  assignedDealerId?: string;
+  q?: string;
+  sortBy?: string;
+  sortOrder?: string;
   page?: string | number;
   pageSize?: string | number;
 }

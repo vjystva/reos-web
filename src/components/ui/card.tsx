@@ -8,7 +8,7 @@ export const Card = React.forwardRef<
   <div
     ref={ref}
     className={cn(
-      "rounded-lg border border-slate-200 bg-white shadow-sm",
+      "rounded-md border border-border bg-card text-card-foreground",
       className,
     )}
     {...props}
@@ -22,19 +22,23 @@ export const CardHeader = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <div
     ref={ref}
-    className={cn("flex flex-col space-y-1.5 p-4", className)}
+    className={cn("flex flex-col space-y-1 p-3", className)}
     {...props}
   />
 ));
 CardHeader.displayName = "CardHeader";
 
+/** Section-heading recipe: small, uppercase, muted. */
 export const CardTitle = React.forwardRef<
   HTMLHeadingElement,
   React.HTMLAttributes<HTMLHeadingElement>
 >(({ className, ...props }, ref) => (
   <h3
     ref={ref}
-    className={cn("text-sm font-medium text-slate-500", className)}
+    className={cn(
+      "text-xs font-semibold uppercase tracking-wider text-muted-foreground",
+      className,
+    )}
     {...props}
   />
 ));
@@ -44,6 +48,6 @@ export const CardContent = React.forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement>
 >(({ className, ...props }, ref) => (
-  <div ref={ref} className={cn("p-4 pt-0", className)} {...props} />
+  <div ref={ref} className={cn("p-3 pt-0", className)} {...props} />
 ));
 CardContent.displayName = "CardContent";

@@ -1,19 +1,13 @@
 import * as React from "react";
-import { cn } from "@/lib/utils";
+import { StatusPill } from "@/components/StatusPill";
+import { TASK_PRIORITY_TONE } from "@/lib/taskBoard";
 import type { TaskPriority } from "@/types/api";
 
-const COLORS: Record<TaskPriority, string> = {
-  low: "bg-slate-500 text-white",
-  medium: "bg-blue-600 text-white",
-  high: "bg-amber-500 text-white",
-  urgent: "bg-red-600 text-white",
-};
-
 const LABELS: Record<TaskPriority, string> = {
-  low: "LOW",
-  medium: "MEDIUM",
-  high: "HIGH",
-  urgent: "URGENT",
+  low: "Low",
+  medium: "Medium",
+  high: "High",
+  urgent: "Urgent",
 };
 
 interface TaskPriorityBadgeProps {
@@ -22,23 +16,22 @@ interface TaskPriorityBadgeProps {
 }
 
 /**
- * Priority badge for tasks.
+ * Priority chip for tasks — `StatusPill` geometry on the shared tone palette
+ * (urgent = destructive, high = accent, medium = chart-2, low = muted).
+ * The label is always rendered so colour is never the sole differentiator.
  */
 export function TaskPriorityBadge({ priority, className }: TaskPriorityBadgeProps) {
   const key = (priority ?? "").toLowerCase() as TaskPriority;
-  const colour = COLORS[key] ?? "bg-slate-300 text-slate-900";
-  const label = LABELS[key] ?? (priority ? String(priority).toUpperCase() : "—");
+  const tone = TASK_PRIORITY_TONE[key] ?? "neutral";
+  const label = LABELS[key] ?? (priority ? String(priority) : "—");
   return (
-    <span
+    <StatusPill
+      tone={tone}
+      className={className}
       role="img"
       aria-label={`Priority: ${label}`}
-      className={cn(
-        "inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold tracking-wide",
-        colour,
-        className,
-      )}
     >
       {label}
-    </span>
+    </StatusPill>
   );
 }

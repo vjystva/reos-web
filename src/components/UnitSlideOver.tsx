@@ -18,20 +18,34 @@ import {
   PricingBreakdownFallback,
 } from "@/components/PricingBreakdownTable";
 import { BookingForm } from "@/components/BookingForm";
+import { Select } from "@/components/ui/select";
 import {
   useUnitPriceConfig,
   PriceConfigNotFoundError,
 } from "@/hooks/useUnitPriceConfig";
-import { formatCurrency } from "@/lib/formatCurrency";
-import type { Unit, BookingCreated } from "@/types/api";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { useUpdateUnitStatusMutation } from "@/hooks/useUpdateUnitStatusMutation";
+import {
+  availableTransitions,
+  requiresNote,
+} from "@/lib/unitTransitions";
+import { unitStatusLabel } from "@/lib/unitTone";
+import { inr } from "@/lib/utils";
+import type { Unit, BookingCreated, UnitStatus } from "@/types/api";
+
+/** Dense section heading recipe, shared across the inventory surfaces. */
+const SECTION_HEADING =
+  "text-[11px] font-semibold uppercase tracking-wider text-muted-foreground";
 
 interface UnitSlideOverProps {
   unit: Unit | null;
+  /** Project the unit belongs to; falls back to the unit's own projectId. */
+  projectId?: string;
 }
 
 type Step = "detail" | "booking" | "success";
 
-export function UnitSlideOver({ unit }: UnitSlideOverProps) {
+export function UnitSlideOver({ unit, projectId }: UnitSlideOverProps) {
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
@@ -39,16 +53,49 @@ export function UnitSlideOver({ unit }: UnitSlideOverProps) {
   const [step, setStep] = React.useState<Step>("detail");
   const [createdBooking, setCreatedBooking] =
     React.useState<BookingCreated | null>(null);
+  const [targetStatus, setTargetStatus] = React.useState("");
+  const [note, setNote] = React.useState("");
+  const [statusError, setStatusError] = React.useState<string | null>(null);
 
   const open = Boolean(unit);
   const unitId = unit?.id ?? null;
   const priceQ = useUnitPriceConfig(open ? unitId : null);
 
-  // Reset step when the slide-over opens for a different unit (or closes).
+  const { data: currentUser } = useCurrentUser();
+  const effectiveProjectId = projectId ?? unit?.projectId ?? "";
+  const statusMutation = useUpdateUnitStatusMutation(
+    effectiveProjectId,
+    unit?.id ?? "",
+  );
+
+  // Reset step + status form when the slide-over opens for a different unit.
   React.useEffect(() => {
     setStep("detail");
     setCreatedBooking(null);
+    setTargetStatus("");
+    setNote("");
+    setStatusError(null);
   }, [unitId]);
+
+  const transitions = availableTransitions(unit?.status, currentUser?.role);
+  const noteRequired = targetStatus ? requiresNote(targetStatus) : false;
+
+  async function handleStatusChange() {
+    if (!targetStatus) return;
+    setStatusError(null);
+    try {
+      await statusMutation.mutateAsync({
+        toStatus: targetStatus as UnitStatus,
+        note: note.trim() ? note.trim() : undefined,
+      });
+      setTargetStatus("");
+      setNote("");
+    } catch (err) {
+      setStatusError(
+        err instanceof Error ? err.message : "Failed to update status",
+      );
+    }
+  }
 
   function close() {
     const next = new URLSearchParams(params.toString());
@@ -66,6 +113,7 @@ export function UnitSlideOver({ unit }: UnitSlideOverProps) {
 
   const status = (unit.status ?? "").toLowerCase();
   const canBook = status === "available";
+  const carpetArea = unit.areaSqft ?? unit.area ?? null;
 
   const headerTitle =
     step === "booking"
@@ -102,28 +150,35 @@ export function UnitSlideOver({ unit }: UnitSlideOverProps) {
           {step === "detail" ? (
             <>
               <section>
-                <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Unit details
-                </h4>
-                <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1.5 text-sm">
-                  <dt className="text-slate-500">Floor</dt>
-                  <dd className="text-slate-900">
+                <h4 className={SECTION_HEADING}>Unit details</h4>
+                <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs">
+                  <dt className="text-muted-foreground">Floor</dt>
+                  <dd className="font-mono tabular-nums text-foreground">
                     {typeof unit.floor === "number" ? unit.floor : "—"}
                   </dd>
-                  <dt className="text-slate-500">BHK</dt>
-                  <dd className="text-slate-900">
+                  <dt className="text-muted-foreground">BHK</dt>
+                  <dd className="font-mono tabular-nums text-foreground">
                     {typeof unit.bedrooms === "number" ? unit.bedrooms : "—"}
                   </dd>
-                  <dt className="text-slate-500">Area</dt>
-                  <dd className="text-slate-900">
-                    {typeof unit.area === "number"
-                      ? `${unit.area.toLocaleString("en-IN")} sqft`
-                      : "—"}
+                  <dt className="text-muted-foreground">Carpet area</dt>
+                  <dd className="text-foreground">
+                    {typeof carpetArea === "number" ? (
+                      <>
+                        <span className="font-mono tabular-nums">
+                          {carpetArea.toLocaleString("en-IN")}
+                        </span>{" "}
+                        sqft
+                      </>
+                    ) : (
+                      "—"
+                    )}
                   </dd>
-                  <dt className="text-slate-500">Facing</dt>
-                  <dd className="text-slate-900">{unit.facing ?? "—"}</dd>
-                  <dt className="text-slate-500">Corner unit</dt>
-                  <dd className="text-slate-900">
+                  <dt className="text-muted-foreground">Facing</dt>
+                  <dd className="capitalize text-foreground">
+                    {unit.facing ? unit.facing.replace(/_/g, " ") : "—"}
+                  </dd>
+                  <dt className="text-muted-foreground">Corner unit</dt>
+                  <dd className="text-foreground">
                     {unit.isCorner === true
                       ? "Yes"
                       : unit.isCorner === false
@@ -134,9 +189,7 @@ export function UnitSlideOver({ unit }: UnitSlideOverProps) {
               </section>
 
               <section>
-                <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Pricing
-                </h4>
+                <h4 className={SECTION_HEADING}>Pricing</h4>
                 <div className="mt-2">
                   {priceQ.isLoading ? (
                     <div className="space-y-2">
@@ -177,41 +230,106 @@ export function UnitSlideOver({ unit }: UnitSlideOverProps) {
           {step === "success" && createdBooking ? (
             <div className="space-y-3 text-center">
               <div
-                className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-green-100 text-2xl text-green-700"
+                className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-chart-4/15 text-lg text-chart-4"
                 aria-hidden="true"
               >
                 ✓
               </div>
               <div>
-                <p className="text-base font-semibold text-slate-900">
+                <p className="text-sm font-semibold text-foreground">
                   Booking created
                 </p>
-                <p className="text-sm font-mono text-slate-700">
+                <p className="font-mono text-xs text-muted-foreground">
                   {createdBooking.bookingNumber ?? createdBooking.id}
                 </p>
               </div>
-              <p className="text-sm text-slate-600">
-                Unit {unit.unitNumber ?? unit.id} is now blocked
-                {createdBooking.leadId ? "." : "."}
+              <p className="text-xs text-muted-foreground">
+                Unit {unit.unitNumber ?? unit.id} is now blocked.
               </p>
-              <p className="text-xs text-slate-500">
-                Amount: {formatCurrency(defaultAmount)}
+              <p className="text-[11px] text-muted-foreground">
+                Amount:{" "}
+                <span className="font-mono tabular-nums text-foreground">
+                  {inr(defaultAmount)}
+                </span>
               </p>
             </div>
           ) : null}
         </div>
 
-        <div className="mt-3 border-t border-slate-200 pt-3">
+        <div className="mt-3 space-y-3 border-t border-border pt-3">
           {step === "detail" ? (
-            canBook ? (
-              <Button onClick={() => setStep("booking")} className="w-full">
-                Book this unit
-              </Button>
-            ) : (
-              <p className="text-center text-xs text-slate-500">
-                This unit is not available for booking.
-              </p>
-            )
+            <>
+              {canBook ? (
+                <Button onClick={() => setStep("booking")} className="w-full">
+                  Book this unit
+                </Button>
+              ) : (
+                <p className="text-center text-[11px] text-muted-foreground">
+                  This unit is not available for booking.
+                </p>
+              )}
+
+              {transitions.length > 0 ? (
+                <div className="space-y-2">
+                  <label className={SECTION_HEADING} htmlFor="unit-status-change">
+                    Change status
+                  </label>
+                  <Select
+                    id="unit-status-change"
+                    value={targetStatus}
+                    onChange={(e) => {
+                      setTargetStatus(e.target.value);
+                      setStatusError(null);
+                    }}
+                    aria-label="Change unit status"
+                  >
+                    <option value="">Select new status…</option>
+                    {transitions.map((t) => (
+                      <option key={t} value={t}>
+                        {unitStatusLabel(t)}
+                      </option>
+                    ))}
+                  </Select>
+
+                  {noteRequired ? (
+                    <div className="space-y-1">
+                      <label
+                        className="block text-[11px] uppercase tracking-wider text-muted-foreground"
+                        htmlFor="unit-status-note"
+                      >
+                        Note (required)
+                      </label>
+                      <textarea
+                        id="unit-status-note"
+                        value={note}
+                        onChange={(e) => setNote(e.target.value)}
+                        rows={2}
+                        maxLength={1000}
+                        className="block w-full rounded-md border border-input bg-background px-2 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background"
+                        placeholder="Reason for this change…"
+                      />
+                    </div>
+                  ) : null}
+
+                  {statusError ? (
+                    <ErrorBanner message={statusError} />
+                  ) : null}
+
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    disabled={
+                      !targetStatus ||
+                      statusMutation.isPending ||
+                      (noteRequired && !note.trim())
+                    }
+                    onClick={() => void handleStatusChange()}
+                  >
+                    {statusMutation.isPending ? "Updating…" : "Update status"}
+                  </Button>
+                </div>
+              ) : null}
+            </>
           ) : null}
           {step === "success" ? (
             <Button onClick={close} variant="outline" className="w-full">

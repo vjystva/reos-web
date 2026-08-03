@@ -3,14 +3,29 @@
 import * as React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { TemperatureBadge } from "@/components/TemperatureBadge";
-import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import { LEAD_STAGES, type Lead, type LeadStage } from "@/types/api";
-import { stageLabel } from "@/lib/utils";
+import { stageLabel, formatDate } from "@/lib/utils";
+import { leadStageTone } from "@/lib/leadTone";
+import type { StatusTone } from "@/components/StatusPill";
 
 interface LeadKanbanProps {
   leads: Lead[];
   isLoading?: boolean;
 }
+
+/**
+ * Column accent rail — the stage tone (see `@/lib/leadTone`) rendered as a
+ * 2px bar across the top of each column so the board reads as a progression
+ * at a glance without adding another chip.
+ */
+const RAIL: Record<StatusTone, string> = {
+  neutral: "bg-muted-foreground/30",
+  info: "bg-chart-2",
+  warn: "bg-accent",
+  good: "bg-chart-4",
+  bad: "bg-destructive",
+};
 
 export function LeadKanban({ leads, isLoading }: LeadKanbanProps) {
   const router = useRouter();
@@ -40,7 +55,7 @@ export function LeadKanban({ leads, isLoading }: LeadKanbanProps) {
     <div
       role="region"
       aria-label="Lead pipeline"
-      className="flex gap-3 overflow-x-auto pb-2"
+      className="flex gap-2 overflow-x-auto pb-2"
     >
       {LEAD_STAGES.map((stage) => {
         const items = grouped[stage];
@@ -49,36 +64,57 @@ export function LeadKanban({ leads, isLoading }: LeadKanbanProps) {
             key={stage}
             role="group"
             aria-label={`${stageLabel(stage)} — ${items.length} leads`}
-            className="flex w-64 shrink-0 flex-col rounded-md border border-slate-200 bg-slate-50"
+            className="flex w-60 shrink-0 flex-col overflow-hidden rounded-md border border-border bg-muted/40"
           >
-            <header className="flex items-center justify-between border-b border-slate-200 px-3 py-2">
-              <h3 className="text-sm font-semibold text-slate-700">
+            <div className={`h-0.5 shrink-0 ${RAIL[leadStageTone(stage)]}`} aria-hidden="true" />
+            <header className="flex items-center justify-between gap-2 border-b border-border bg-card px-2.5 py-1.5">
+              <h3 className="truncate text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                 {stageLabel(stage)}
               </h3>
-              <Badge variant="outline">{items.length}</Badge>
+              <span className="font-mono text-[11px] font-semibold tabular-nums text-foreground">
+                {items.length}
+              </span>
             </header>
-            <div className="flex max-h-[60vh] flex-col gap-2 overflow-y-auto p-2">
+            <div className="flex max-h-[60vh] flex-col gap-1.5 overflow-y-auto p-1.5">
               {isLoading && items.length === 0 ? (
-                <div className="h-12 animate-pulse rounded bg-slate-200" />
+                <>
+                  <Skeleton className="h-14 w-full rounded-sm" />
+                  <Skeleton className="h-14 w-full rounded-sm" />
+                </>
               ) : items.length === 0 ? (
-                <div className="py-4 text-center text-xs text-slate-400">
+                <p className="py-6 text-center text-[11px] text-muted-foreground">
                   No leads
-                </div>
+                </p>
               ) : (
                 items.map((lead) => (
                   <button
                     key={lead.id}
                     type="button"
                     onClick={() => openLead(lead.id)}
-                    className="flex flex-col gap-1 rounded border border-slate-200 bg-white p-2 text-left text-sm shadow-sm hover:border-slate-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400"
+                    className="flex flex-col gap-1.5 rounded-sm border border-border bg-card p-2 text-left transition-colors hover:border-primary/40 hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background"
                   >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="truncate font-medium text-slate-900">
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="truncate text-xs font-medium text-foreground">
                         {lead.name}
                       </span>
-                      <Badge variant="secondary">{lead.aiScore ?? "—"}</Badge>
+                      <span
+                        className="shrink-0 font-mono text-[11px] font-semibold tabular-nums text-foreground"
+                        title="AI score"
+                      >
+                        {lead.aiScore ?? "—"}
+                      </span>
                     </div>
-                    <TemperatureBadge temperature={lead.temperature} />
+                    {lead.phone ? (
+                      <span className="truncate font-mono text-[11px] tabular-nums text-muted-foreground">
+                        {lead.phone}
+                      </span>
+                    ) : null}
+                    <div className="flex items-center justify-between gap-2">
+                      <TemperatureBadge temperature={lead.temperature} />
+                      <span className="shrink-0 text-[11px] text-muted-foreground">
+                        {formatDate(lead.createdAt)}
+                      </span>
+                    </div>
                   </button>
                 ))
               )}

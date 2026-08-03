@@ -23,7 +23,7 @@ describe("logout route", () => {
     it("makes no upstream backend call", async () => {
       global.fetch = jest.fn();
 
-      const res = await POST();
+      await POST();
 
       expect((global.fetch as jest.Mock).mock.calls.length).toBe(0);
     });

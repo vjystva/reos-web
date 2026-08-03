@@ -26,9 +26,8 @@ const WORKFLOW = {
   id: 'wf1',
   tenantId: 'ten1',
   name: 'New Lead Welcome',
-  triggerType: 'lead_created',
+  triggerEvent: 'lead_stage_changed',
   isActive: true,
-  actions: [{ actionType: 'send_notification', config: {} }],
   createdAt: '2026-05-19T10:00:00Z',
   updatedAt: '2026-05-19T10:00:00Z',
 };
@@ -59,8 +58,7 @@ describe('useCreateWorkflowMutation', () => {
     const { result } = renderHook(() => useCreateWorkflowMutation(), { wrapper });
     await result.current.mutateAsync({
       name: 'New Lead Welcome',
-      triggerType: 'lead_created',
-      actions: [{ actionType: 'send_notification', config: {} }],
+      triggerEvent: 'lead_stage_changed',
       isActive: true,
     });
     const url = (global.fetch as jest.Mock).mock.calls[0][0] as string;
@@ -92,32 +90,32 @@ describe('useDeleteWorkflowMutation', () => {
 
 describe('Zod validation — CreateWorkflowForm', () => {
   const { z } = jest.requireActual('zod') as typeof import('zod');
-  const TRIGGER_TYPES = ['lead_created', 'stage_changed', 'booking_created', 'payment_due', 'site_visit_scheduled'] as const;
+  const TRIGGER_EVENTS = ['lead_stage_changed', 'booking_status_changed', 'payment_due', 'site_visit_scheduled', 'task_due'] as const;
   const schema = z.object({
-    name: z.string().min(1).max(255),
-    triggerType: z.enum(TRIGGER_TYPES),
+    name: z.string().min(1).max(200),
+    triggerEvent: z.enum(TRIGGER_EVENTS),
     isActive: z.boolean().optional(),
   });
 
   it('accepts valid workflow input', () => {
-    const r = schema.safeParse({ name: 'My Workflow', triggerType: 'lead_created', isActive: true });
+    const r = schema.safeParse({ name: 'My Workflow', triggerEvent: 'lead_stage_changed', isActive: true });
     expect(r.success).toBe(true);
   });
 
   it('rejects empty name', () => {
-    const r = schema.safeParse({ name: '', triggerType: 'lead_created' });
+    const r = schema.safeParse({ name: '', triggerEvent: 'lead_stage_changed' });
     expect(r.success).toBe(false);
     expect(r.error?.issues[0]?.message).toBeTruthy();
   });
 
-  it('rejects invalid trigger type', () => {
-    const r = schema.safeParse({ name: 'Wf', triggerType: 'unknown_trigger' });
+  it('rejects invalid trigger event', () => {
+    const r = schema.safeParse({ name: 'Wf', triggerEvent: 'unknown_trigger' });
     expect(r.success).toBe(false);
   });
 
-  it('accepts all valid trigger types', () => {
-    for (const t of TRIGGER_TYPES) {
-      const r = schema.safeParse({ name: 'Wf', triggerType: t });
+  it('accepts all valid trigger events', () => {
+    for (const t of TRIGGER_EVENTS) {
+      const r = schema.safeParse({ name: 'Wf', triggerEvent: t });
       expect(r.success).toBe(true);
     }
   });

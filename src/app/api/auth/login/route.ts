@@ -36,14 +36,14 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
   // Demo short-circuit — never touches the backend
   if (parsed.data.email === DEMO_EMAIL && parsed.data.password === DEMO_PASSWORD) {
-    const isProd = process.env.NODE_ENV === "production";
+    const secure = process.env.HTTPS === "true";
     const res = NextResponse.json({ user: DEMO_USER }, { status: 200 });
     res.cookies.set(ACCESS_COOKIE, DEMO_ACCESS_TOKEN, {
-      httpOnly: true, secure: isProd, sameSite: "lax", path: "/",
+      httpOnly: true, secure, sameSite: "lax", path: "/",
       maxAge: 60 * 60 * 24 * 30,
     });
     res.cookies.set(REFRESH_COOKIE, DEMO_REFRESH_TOKEN, {
-      httpOnly: true, secure: isProd, sameSite: "lax", path: "/",
+      httpOnly: true, secure, sameSite: "lax", path: "/",
       maxAge: 60 * 60 * 24 * 30,
     });
     return res;
@@ -100,17 +100,17 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const accessMaxAge = expiresIn ?? DEFAULT_ACCESS_TTL_SECONDS;
 
   const res = NextResponse.json({ user }, { status: 200 });
-  const isProd = process.env.NODE_ENV === "production";
+  const secure = process.env.HTTPS === "true";
   res.cookies.set(ACCESS_COOKIE, accessToken, {
     httpOnly: true,
-    secure: isProd,
+    secure,
     sameSite: "lax",
     path: "/",
     maxAge: accessMaxAge,
   });
   res.cookies.set(REFRESH_COOKIE, refreshToken, {
     httpOnly: true,
-    secure: isProd,
+    secure,
     sameSite: "lax",
     path: "/",
     maxAge: REFRESH_MAX_AGE_SECONDS,

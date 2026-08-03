@@ -1,13 +1,19 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { useParams } from "next/navigation";
 import {
   Sheet,
   SheetContent,
+  SheetDescription,
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/PageHeader";
+import { MetricCard } from "@/components/MetricCard";
+import { StatusPill } from "@/components/StatusPill";
 import { PaymentScheduleCard } from "@/components/PaymentScheduleCard";
 import { MilestoneList } from "@/components/MilestoneList";
 import { RecordPaymentForm } from "@/components/RecordPaymentForm";
@@ -15,14 +21,22 @@ import { PaymentHistoryTable } from "@/components/PaymentHistoryTable";
 import { usePaymentSchedule } from "@/hooks/usePaymentSchedule";
 import { usePaymentMilestones } from "@/hooks/usePaymentMilestones";
 import { usePayments } from "@/hooks/usePayments";
+import { useBookingDetail } from "@/hooks/useBookingDetail";
 import { useRecordPaymentMutation } from "@/hooks/useRecordPaymentMutation";
 import { useBounceMutation } from "@/hooks/useBounceMutation";
+import {
+  bookingStatusLabel,
+  bookingStatusTone,
+  collectionPercent,
+} from "@/lib/bookingTone";
+import { inr } from "@/lib/utils";
 import type { RecordPaymentRequest } from "@/types/api";
 
 export default function PaymentsPage() {
   const params = useParams<{ bookingId: string }>();
   const bookingId = params.bookingId;
 
+  const bookingQuery = useBookingDetail(bookingId);
   const scheduleQuery = usePaymentSchedule(bookingId);
   const schedule = scheduleQuery.data?.data?.[0] ?? null;
   const scheduleId = schedule?.id ?? null;
@@ -71,9 +85,88 @@ export default function PaymentsPage() {
     }
   }
 
+  const booking = bookingQuery.data;
+  const bookingNumber = booking?.bookingNumber ?? bookingId.slice(0, 8);
+
+  const outstanding =
+    schedule != null
+      ? (schedule.outstanding ?? schedule.totalAmount - schedule.amountPaid)
+      : null;
+  const percent = schedule
+    ? collectionPercent(schedule.amountPaid, schedule.totalAmount)
+    : null;
+
+  const milestones = milestonesQuery.data ?? [];
+  const paidMilestones = milestones.filter(
+    (m) => m.derivedStatus === "paid",
+  ).length;
+  const overdueMilestones = milestones.filter(
+    (m) => m.derivedStatus === "overdue",
+  ).length;
+
+  const tilesLoading = scheduleQuery.isLoading;
+  const tilesError = scheduleQuery.isError;
+
   return (
-    <div className="space-y-6 p-6">
-      <h1 className="text-xl font-semibold text-slate-900">Payments</h1>
+    <div className="space-y-3">
+      <PageHeader
+        title={`Payments · ${bookingNumber}`}
+        subtitle={
+          schedule?.name ??
+          (scheduleQuery.isLoading ? undefined : "No payment schedule on file")
+        }
+        actions={
+          <>
+            {booking?.status ? (
+              <StatusPill tone={bookingStatusTone(booking.status)}>
+                {bookingStatusLabel(booking.status)}
+              </StatusPill>
+            ) : null}
+            <Button variant="outline" asChild>
+              <Link href={`/dashboard/bookings/${bookingId}/site-visits`}>
+                Site visits
+              </Link>
+            </Button>
+            <Button variant="outline" asChild>
+              <Link href="/dashboard/bookings">All bookings</Link>
+            </Button>
+          </>
+        }
+      />
+
+      <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+        <MetricCard
+          label="Booked value"
+          value={schedule ? inr(schedule.totalAmount) : null}
+          isLoading={tilesLoading}
+          isError={tilesError}
+        />
+        <MetricCard
+          label="Collected"
+          value={schedule ? inr(schedule.amountPaid) : null}
+          hint={percent != null ? `${percent}% of booked value` : undefined}
+          isLoading={tilesLoading}
+          isError={tilesError}
+        />
+        <MetricCard
+          label="Outstanding"
+          value={outstanding != null ? inr(outstanding) : null}
+          hint={percent != null ? `${100 - percent}% still to collect` : undefined}
+          isLoading={tilesLoading}
+          isError={tilesError}
+        />
+        <MetricCard
+          label="Milestones paid"
+          value={
+            milestonesQuery.isLoading || milestones.length === 0
+              ? null
+              : `${paidMilestones}/${milestones.length}`
+          }
+          subLabels={[{ label: "overdue", value: overdueMilestones }]}
+          isLoading={milestonesQuery.isLoading}
+          isError={milestonesQuery.isError}
+        />
+      </div>
 
       <PaymentScheduleCard
         schedule={schedule}
@@ -82,8 +175,8 @@ export default function PaymentsPage() {
         onRetry={() => void scheduleQuery.refetch()}
       />
 
-      <section>
-        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">
+      <section className="space-y-2">
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
           Milestones
         </h2>
         <MilestoneList
@@ -95,9 +188,9 @@ export default function PaymentsPage() {
         />
       </section>
 
-      <section>
-        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">
-          Payment History
+      <section className="space-y-2">
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          Payment history
         </h2>
         <PaymentHistoryTable
           payments={paymentsQuery.data?.data}
@@ -112,7 +205,10 @@ export default function PaymentsPage() {
       <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
         <SheetContent>
           <SheetHeader>
-            <SheetTitle>Record Payment</SheetTitle>
+            <SheetTitle>Record payment</SheetTitle>
+            <SheetDescription>
+              Log a receipt against a milestone on this schedule.
+            </SheetDescription>
           </SheetHeader>
           <div className="mt-4">
             <RecordPaymentForm
