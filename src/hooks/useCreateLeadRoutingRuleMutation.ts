@@ -1,5 +1,6 @@
 "use client";
 
+import { extractApiErrorMessage } from "@/lib/mutationError";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { CreateLeadRoutingRuleRequest, LeadRoutingRule } from "@/types/api";
 
@@ -16,11 +17,7 @@ async function createLeadRoutingRule(
     throw new Error("unauthorized");
   }
   if (!res.ok) {
-    const err = (await res.json().catch(() => ({}))) as {
-      message?: string;
-      error?: string;
-    };
-    throw new Error(err.message ?? err.error ?? "Failed to create routing rule");
+    throw new Error(await extractApiErrorMessage(res, "Failed to create routing rule"));
   }
   return res.json() as Promise<LeadRoutingRule>;
 }

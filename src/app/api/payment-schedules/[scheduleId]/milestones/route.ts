@@ -4,24 +4,38 @@ import { MilestonesResponseSchema } from "@/types/api";
 import { isDemoRequest, getDemoMilestones } from "@/lib/demo";
 
 /**
- * GET /api/payment-schedules/[scheduleId]/milestones
+ * GET /api/payment-schedules/[scheduleId]/milestones?bookingId=<id>
  *
- * Proxies to GET /payment-schedules/:id/milestones on the backend.
- * Returns milestones with amount_paid, status, and overdue flag.
+ * Proxies to `GET /bookings/:bookingId/payment-schedule/milestones`
+ * (`PaymentMilestonesController.list`).
+ *
+ * There is NO `/payment-schedules/:id/milestones` endpoint upstream — that
+ * URL 404s. Every payment-schedule route is nested under its booking, and a
+ * booking has exactly one schedule, so the booking id is the addressable key.
+ * `scheduleId` stays in the path because it is what the milestone react-query
+ * cache is keyed on; `bookingId` is what actually builds the upstream URL.
  */
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ scheduleId: string }> },
 ): Promise<NextResponse> {
   const { scheduleId } = await params;
+  const bookingId = new URL(req.url).searchParams.get("bookingId");
 
   if (isDemoRequest(req)) {
     return NextResponse.json(getDemoMilestones(scheduleId), { status: 200 });
   }
 
+  if (!bookingId) {
+    return NextResponse.json(
+      { error: "bookingId query param is required" },
+      { status: 400 },
+    );
+  }
+
   const upstream = await proxyFetch(
     req,
-    `/payment-schedules/${scheduleId}/milestones`,
+    `/bookings/${encodeURIComponent(bookingId)}/payment-schedule/milestones`,
   );
 
   if (upstream.status === 401) {

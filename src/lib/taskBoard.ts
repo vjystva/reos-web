@@ -1,4 +1,5 @@
 import type { StatusTone } from "@/components/StatusPill";
+import { userLabel } from "@/components/nav-config";
 import type { Task, TaskPriority, TaskStatus } from "@/types/api";
 
 /**
@@ -39,10 +40,97 @@ export interface TaskOwnerOption {
   id: string;
   email: string;
   name?: string;
+  /** `users.role` — absent when a caller builds options by hand. */
+  role?: string;
 }
 
+/**
+ * Roles that can sensibly own an internal follow-up.
+ *
+ * `dealer` and `customer` are deliberately excluded: an external channel
+ * partner or a buyer is never the assignee of an internal task, and leaving
+ * them in floods the picker (see `taskOwnerOptions`). `builder_admin`/`admin`
+ * stay in because the signed-in admin is the default assignee on the tasks
+ * page — dropping them would leave `defaultAssignee` pointing at an id that is
+ * not in the list.
+ */
+export const TASK_OWNER_ROLES: readonly string[] = [
+  "sales_agent",
+  "sales_manager",
+  "builder_admin",
+  "admin",
+];
+
+/** Unknown/absent roles are kept — we can't judge, and hiding is worse. */
+export function isTaskOwnerRole(role: string | null | undefined): boolean {
+  if (role == null || role === "") return true;
+  return TASK_OWNER_ROLES.includes(role);
+}
+
+/**
+ * Human label for an owner.
+ *
+ * `users` has no `name` column (only `email`), so the display name is derived
+ * from the email local-part with the same `userLabel` helper the sidebar uses:
+ * `asha.rao@demo.com` → `Asha Rao`. An explicit `name` always wins if a future
+ * payload supplies one.
+ */
 export function ownerLabel(u: TaskOwnerOption): string {
-  return u.name?.trim() || u.email;
+  const explicit = u.name?.trim();
+  if (explicit) return explicit;
+  if (!u.email) return u.id;
+  const derived = userLabel(u.email);
+  // `userLabel` yields the neutral "Signed in" for empty/uuid-shaped locals,
+  // which is meaningless in a picker — show the raw email instead.
+  return derived === "Signed in" ? u.email : derived;
+}
+
+/** Secondary line in the picker — always the real address, for disambiguation. */
+export function ownerSubLabel(u: TaskOwnerOption): string {
+  return u.email ?? "";
+}
+
+/**
+ * Free-text match over the *derived name* and the email.
+ *
+ * Tokens are ANDed so "asha rao" and "rao asha" both hit, and typing a partial
+ * name ("ash") narrows without needing the email.
+ */
+export function ownerMatches(u: TaskOwnerOption, query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  const haystack = `${ownerLabel(u)} ${u.email ?? ""}`.toLowerCase();
+  return q.split(/\s+/).every((token) => haystack.includes(token));
+}
+
+export function filterOwners(
+  users: readonly TaskOwnerOption[],
+  query: string,
+): TaskOwnerOption[] {
+  return users.filter((u) => ownerMatches(u, query));
+}
+
+/**
+ * Picker-ready owner list: role-filtered and sorted by display name.
+ *
+ * `selectedId` is always retained even when it fails the role filter (a task
+ * already assigned to a dealer, or to a since-deactivated account, must not be
+ * silently dropped when the sheet opens).
+ */
+export function taskOwnerOptions(
+  users: readonly TaskOwnerOption[],
+  selectedId?: string | null,
+): TaskOwnerOption[] {
+  const out = users.filter((u) => isTaskOwnerRole(u.role));
+  if (selectedId && !out.some((u) => u.id === selectedId)) {
+    const kept = users.find((u) => u.id === selectedId);
+    if (kept) out.push(kept);
+  }
+  return out.sort((a, b) =>
+    ownerLabel(a).localeCompare(ownerLabel(b), undefined, {
+      sensitivity: "base",
+    }),
+  );
 }
 
 /** Board columns, left to right, plus the closed bucket rendered underneath. */

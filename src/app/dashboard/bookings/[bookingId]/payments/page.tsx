@@ -41,7 +41,10 @@ export default function PaymentsPage() {
   const schedule = scheduleQuery.data?.data?.[0] ?? null;
   const scheduleId = schedule?.id ?? null;
 
-  const milestonesQuery = usePaymentMilestones(scheduleId);
+  // Milestones are addressed by BOOKING upstream
+  // (`GET /bookings/:bookingId/payment-schedule/milestones`); `scheduleId`
+  // only gates the query and keys the cache.
+  const milestonesQuery = usePaymentMilestones(scheduleId, bookingId);
   const paymentsQuery = usePayments(bookingId);
 
   const recordMutation = useRecordPaymentMutation();
@@ -112,8 +115,15 @@ export default function PaymentsPage() {
       <PageHeader
         title={`Payments · ${bookingNumber}`}
         subtitle={
-          schedule?.name ??
-          (scheduleQuery.isLoading ? undefined : "No payment schedule on file")
+          // `PaymentScheduleResponseDto` has no `name` field, so keying the
+          // "no schedule" copy off `schedule?.name` printed "No payment
+          // schedule on file" on every booking that DID have one. Key off the
+          // schedule itself.
+          scheduleQuery.isLoading
+            ? undefined
+            : schedule
+              ? (schedule.name ?? "Payment schedule")
+              : "No payment schedule on file"
         }
         actions={
           <>
@@ -212,6 +222,7 @@ export default function PaymentsPage() {
           </SheetHeader>
           <div className="mt-4">
             <RecordPaymentForm
+              bookingId={bookingId}
               milestones={milestonesQuery.data ?? []}
               defaultMilestoneId={activeMilestoneId}
               isSubmitting={recordMutation.isPending}

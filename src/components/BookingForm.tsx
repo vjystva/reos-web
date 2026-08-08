@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { ErrorBanner } from "@/components/ErrorBanner";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useLeadsForBooking } from "@/hooks/useLeadsForBooking";
+import { useLead } from "@/hooks/useLead";
 import {
   useBookingMutation,
   BookingConflictError,
@@ -20,6 +21,13 @@ interface BookingFormProps {
   unitId: string;
   unitNumber: string;
   defaultAmount: number;
+  /**
+   * Lead to pre-select — set when the flow was entered from a lead's
+   * "Convert to Booking" (`/dashboard/inventory?leadId=…`). The lead may sit
+   * outside the 50-row picker page, so it is fetched on its own and pinned to
+   * the top of the list.
+   */
+  presetLeadId?: string | null;
   onCancel: () => void;
   onSuccess: (booking: BookingCreated) => void;
 }
@@ -28,24 +36,35 @@ export function BookingForm({
   unitId,
   unitNumber,
   defaultAmount,
+  presetLeadId = null,
   onCancel,
   onSuccess,
 }: BookingFormProps) {
   const leadsQ = useLeadsForBooking();
   const mutation = useBookingMutation();
+  // Guarantees the pre-selected lead is resolvable even when it is not in the
+  // picker's first page.
+  const presetLeadQ = useLead(presetLeadId ?? "");
 
   const [search, setSearch] = React.useState("");
   const [selectedLeadId, setSelectedLeadId] = React.useState<string | null>(
-    null,
+    presetLeadId,
   );
   const [amount, setAmount] = React.useState<string>(
     Number.isFinite(defaultAmount) ? String(defaultAmount) : "",
   );
 
-  const leads: Lead[] = React.useMemo(
-    () => leadsQ.data?.data ?? [],
-    [leadsQ.data],
-  );
+  // Re-arm the selection if the caller swaps the lead while mounted.
+  React.useEffect(() => {
+    if (presetLeadId) setSelectedLeadId(presetLeadId);
+  }, [presetLeadId]);
+
+  const leads: Lead[] = React.useMemo(() => {
+    const page = leadsQ.data?.data ?? [];
+    const preset = presetLeadQ.data;
+    if (!preset || page.some((l) => l.id === preset.id)) return page;
+    return [preset, ...page];
+  }, [leadsQ.data, presetLeadQ.data]);
   const filtered = React.useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return leads;
@@ -114,6 +133,13 @@ export function BookingForm({
         <label htmlFor="lead-search" className={LABEL}>
           Select lead
         </label>
+        {presetLeadId && selectedLead ? (
+          <p className="rounded-sm border border-accent/30 bg-accent/10 px-2 py-1 text-[11px] text-foreground">
+            Converting{" "}
+            <span className="font-medium">{selectedLead.name}</span> — pre-selected
+            from the lead page. Pick a different lead below to change it.
+          </p>
+        ) : null}
         <Input
           id="lead-search"
           placeholder="Search by name or phone"

@@ -88,7 +88,10 @@ describe("useCreateDealerMutation", () => {
 
     await act(async () => {
       await expect(
-        result.current.mutateAsync({ name: "" }),
+        // `email` is part of CreateDealerRequest — the backend's
+        // CreateDealerDto requires it and `dealers.email` is NOT NULL. The
+        // upstream 400 under test here is about `name`.
+        result.current.mutateAsync({ name: "", email: "partner@example.com" }),
       ).rejects.toThrow("Name required");
     });
   });

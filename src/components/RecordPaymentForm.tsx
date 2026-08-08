@@ -6,7 +6,12 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { ErrorBanner } from "@/components/ErrorBanner";
 import { inr } from "@/lib/utils";
-import { RecordPaymentRequestSchema, type RecordPaymentRequest } from "@/types/api";
+import { paymentModeLabel } from "@/lib/bookingTone";
+import {
+  PAYMENT_MODES,
+  RecordPaymentRequestSchema,
+  type RecordPaymentRequest,
+} from "@/types/api";
 import type { MilestoneWithDerivedStatus } from "@/hooks/usePaymentMilestones";
 
 /** Dense field label recipe — matches the rest of the booking surfaces. */
@@ -16,6 +21,11 @@ const FIELD_ERROR = "text-[11px] text-destructive";
 const OPTIONAL = "normal-case tracking-normal text-muted-foreground/70";
 
 interface RecordPaymentFormProps {
+  /**
+   * Required — the BFF builds `POST /bookings/:bookingId/payments` from it.
+   * There is no top-level `/payments` endpoint upstream.
+   */
+  bookingId: string;
   milestones: MilestoneWithDerivedStatus[];
   defaultMilestoneId?: string;
   isSubmitting: boolean;
@@ -24,11 +34,17 @@ interface RecordPaymentFormProps {
   onCancel: () => void;
 }
 
-const PAYMENT_MODES = ["cheque", "NEFT", "RTGS", "cash", "UPI"] as const;
-
 type FieldErrors = Partial<Record<keyof RecordPaymentRequest, string>>;
 
+/** YYYY-MM-DD in local time — what `<input type="date">` expects. */
+function today(): string {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
 export function RecordPaymentForm({
+  bookingId,
   milestones,
   defaultMilestoneId,
   isSubmitting,
@@ -40,17 +56,30 @@ export function RecordPaymentForm({
 
   const [milestoneId, setMilestoneId] = React.useState(defaultMilestoneId ?? "");
   const [amount, setAmount] = React.useState("");
-  const [mode, setMode] = React.useState<RecordPaymentRequest["mode"]>("NEFT");
+  // Backend `RecordPaymentDto.paymentMode` is @IsIn(PAYMENT_MODES) with
+  // lowercase values — the old "NEFT"/"RTGS"/"UPI" spellings 400'd.
+  const [paymentMode, setPaymentMode] =
+    React.useState<RecordPaymentRequest["paymentMode"]>("neft");
+  // `paymentDate` is REQUIRED upstream (@IsDateString). It was missing
+  // entirely from the old payload, so every submit 400'd even with a valid
+  // mode.
+  const [paymentDate, setPaymentDate] = React.useState(today());
   const [referenceNumber, setReferenceNumber] = React.useState("");
   const [notes, setNotes] = React.useState("");
   const [fieldErrors, setFieldErrors] = React.useState<FieldErrors>({});
 
+  React.useEffect(() => {
+    setMilestoneId(defaultMilestoneId ?? "");
+  }, [defaultMilestoneId]);
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const raw = {
+      bookingId,
       milestoneId,
       amount: parseFloat(amount),
-      mode,
+      paymentDate,
+      paymentMode,
       referenceNumber: referenceNumber || undefined,
       notes: notes || undefined,
     };
@@ -113,23 +142,42 @@ export function RecordPaymentForm({
       </div>
 
       <div className="space-y-1">
+        <label className={LABEL} htmlFor="payment-date">
+          Payment date
+        </label>
+        <Input
+          id="payment-date"
+          type="date"
+          className="font-mono tabular-nums"
+          value={paymentDate}
+          onChange={(e) => setPaymentDate(e.target.value)}
+        />
+        {fieldErrors.paymentDate && (
+          <p className={FIELD_ERROR}>{fieldErrors.paymentDate}</p>
+        )}
+      </div>
+
+      <div className="space-y-1">
         <label className={LABEL} htmlFor="payment-mode">
           Payment mode
         </label>
         <Select
           id="payment-mode"
-          value={mode}
-          onChange={(e) => setMode(e.target.value as typeof mode)}
+          value={paymentMode}
+          onChange={(e) => setPaymentMode(e.target.value as typeof paymentMode)}
         >
           {PAYMENT_MODES.map((m) => (
             <option key={m} value={m}>
-              {m}
+              {paymentModeLabel(m)}
             </option>
           ))}
         </Select>
+        {fieldErrors.paymentMode && (
+          <p className={FIELD_ERROR}>{fieldErrors.paymentMode}</p>
+        )}
       </div>
 
-      {mode !== "cash" && (
+      {paymentMode !== "cash" && (
         <div className="space-y-1">
           <label className={LABEL} htmlFor="payment-reference">
             Reference / cheque number

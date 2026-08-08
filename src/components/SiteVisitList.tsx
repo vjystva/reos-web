@@ -15,7 +15,9 @@ interface SiteVisitListProps {
   onConfirm: (visit: SiteVisit) => void;
   onReschedule: (visit: SiteVisit) => void;
   onCancel: (visit: SiteVisit) => void;
+  onComplete: (visit: SiteVisit) => void;
   confirmingId?: string | null;
+  completingId?: string | null;
 }
 
 function formatVisitDate(iso: string): string {
@@ -41,7 +43,9 @@ export function SiteVisitList({
   onConfirm,
   onReschedule,
   onCancel,
+  onComplete,
   confirmingId,
+  completingId,
 }: SiteVisitListProps) {
   if (isLoading) {
     return (
@@ -72,13 +76,21 @@ export function SiteVisitList({
   return (
     <ul className="space-y-3" role="list">
       {visits.map((v) => {
+        // Mirrors backend `ALLOWED_VISIT_TRANSITIONS`:
+        //   scheduled -> confirmed | cancelled
+        //   confirmed -> completed | cancelled (| scheduled, via reschedule)
+        //   completed / cancelled are terminal
         const canConfirm = v.status === "scheduled";
         const canReschedule = v.status === "scheduled" || v.status === "confirmed";
         const canCancel = v.status === "scheduled" || v.status === "confirmed";
+        const canComplete = v.status === "confirmed";
 
         return (
           <li
             key={v.id}
+            data-testid="site-visit-row"
+            data-visit-id={v.id}
+            data-visit-status={v.status}
             className="flex flex-col gap-3 rounded-md border border-slate-200 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between"
           >
             <div className="space-y-1">
@@ -107,6 +119,16 @@ export function SiteVisitList({
                   disabled={confirmingId === v.id}
                 >
                   {confirmingId === v.id ? "Confirming…" : "Confirm"}
+                </Button>
+              ) : null}
+              {canComplete ? (
+                <Button
+                  size="sm"
+                  variant="default"
+                  onClick={() => onComplete(v)}
+                  disabled={completingId === v.id}
+                >
+                  {completingId === v.id ? "Completing…" : "Mark completed"}
                 </Button>
               ) : null}
               {canReschedule ? (

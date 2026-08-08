@@ -7,30 +7,41 @@ import type { MilestoneStatus } from "@/types/api";
  * milestone list and the payment history table.
  *
  * ── Booking status → StatusPill tone ───────────────────────────────────────
- *   draft      → neutral  — nothing committed yet
- *   confirmed  → info     — in flight, collections running
- *   registered → good     — registration done, the milestone that counts
- *   completed  → good     — terminal success
- *   cancelled  → bad      — fell through
+ * The real lifecycle (backend `BOOKING_STATUSES`) is:
+ *   application_received → neutral — application in, nothing committed
+ *   under_review         → info    — builder assessing
+ *   approved             → info    — THE "confirmed" point; unit -> booked
+ *   payment_received     → info    — collections running
+ *   agreement_signed     → good    — paperwork done
+ *   registered           → good    — registration done, the one that counts
+ *   cancelled            → bad     — fell through
  *
- * The backend's `BookingStatusSchema` only enumerates draft/confirmed/
- * cancelled/completed, but the list endpoint's status filter has always
- * offered `registered` too, so it is mapped here rather than silently falling
- * through. Unknown strings fall back to the shared `statusTone()` heuristic.
+ * The legacy draft/confirmed/completed keys are retained below so any older
+ * persisted rows or cached payloads still render a sensible pill, but they
+ * are NOT valid filter values — see `BOOKING_STATUSES` in `@/types/api`.
+ * Unknown strings fall back to the shared `statusTone()` heuristic.
  *
  * ── Milestone status ───────────────────────────────────────────────────────
- *   paid → good · due → warn · overdue → bad · pending → neutral · waived → neutral
+ *   paid → good · due → warn · overdue → bad · partially_paid → info ·
+ *   pending → neutral · waived → neutral
  *
  * ── Payment status ─────────────────────────────────────────────────────────
  *   cleared → good · bounced → bad
  */
 
 export const BOOKING_STATUS_TONE: Record<string, StatusTone> = {
+  // Real lifecycle
+  application_received: "neutral",
+  under_review: "info",
+  approved: "info",
+  payment_received: "info",
+  agreement_signed: "good",
+  registered: "good",
+  cancelled: "bad",
+  // Legacy values kept for backward compatibility with cached payloads
   draft: "neutral",
   confirmed: "info",
-  registered: "good",
   completed: "good",
-  cancelled: "bad",
 };
 
 export function bookingStatusTone(status: string | null | undefined): StatusTone {
@@ -39,11 +50,18 @@ export function bookingStatusTone(status: string | null | undefined): StatusTone
 }
 
 export const BOOKING_STATUS_LABEL: Record<string, string> = {
+  // Real lifecycle
+  application_received: "Application received",
+  under_review: "Under review",
+  approved: "Approved",
+  payment_received: "Payment received",
+  agreement_signed: "Agreement signed",
+  registered: "Registered",
+  cancelled: "Cancelled",
+  // Legacy values kept for backward compatibility with cached payloads
   draft: "Draft",
   confirmed: "Confirmed",
-  registered: "Registered",
   completed: "Completed",
-  cancelled: "Cancelled",
 };
 
 export function bookingStatusLabel(status: string | null | undefined): string {
@@ -57,8 +75,41 @@ export function bookingStatusLabel(status: string | null | undefined): string {
 /** Statuses that count as "registered" for the headline tile. */
 export const REGISTERED_BOOKING_STATUSES = ["registered", "completed"];
 
+/**
+ * Statuses that count as an *active/confirmed* booking for the headline tile.
+ * `approved` is the backend's confirmation point (`BOOKING_CONFIRMED_STATUS`);
+ * everything after it is downstream fulfilment of an already-confirmed
+ * booking. The tile used to count `status === "confirmed"`, a value the
+ * backend never emits, so it always read 0.
+ */
+export const ACTIVE_BOOKING_STATUSES = [
+  "approved",
+  "payment_received",
+  "agreement_signed",
+  "confirmed",
+];
+
+/**
+ * Human label for a backend payment mode (`PAYMENT_MODES`). The wire values
+ * are lowercase snake_case; the acronyms read badly unless upper-cased.
+ */
+export const PAYMENT_MODE_LABEL: Record<string, string> = {
+  cheque: "Cheque",
+  neft: "NEFT",
+  rtgs: "RTGS",
+  cash: "Cash",
+  upi: "UPI",
+  demand_draft: "Demand draft",
+};
+
+export function paymentModeLabel(mode: string | null | undefined): string {
+  if (!mode) return "—";
+  return PAYMENT_MODE_LABEL[mode] ?? mode;
+}
+
 export const MILESTONE_STATUS_TONE: Record<MilestoneStatus, StatusTone> = {
   paid: "good",
+  partially_paid: "info",
   due: "warn",
   overdue: "bad",
   pending: "neutral",
@@ -73,7 +124,8 @@ export function milestoneStatusTone(status: string | null | undefined): StatusTo
 
 export function milestoneStatusLabel(status: string | null | undefined): string {
   if (!status) return "—";
-  return status.charAt(0).toUpperCase() + status.slice(1);
+  const s = status.replace(/[_-]+/g, " ").trim();
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
 export function paymentStatusTone(status: string | null | undefined): StatusTone {

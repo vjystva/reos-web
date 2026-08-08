@@ -1,5 +1,6 @@
 "use client";
 
+import { extractApiErrorMessage } from "@/lib/mutationError";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { RoutingModeResponse, UpdateRoutingModeRequest } from "@/types/api";
 
@@ -16,11 +17,7 @@ async function updateRoutingMode(
     throw new Error("unauthorized");
   }
   if (!res.ok) {
-    const err = (await res.json().catch(() => ({}))) as {
-      message?: string;
-      error?: string;
-    };
-    throw new Error(err.message ?? err.error ?? "Failed to update routing mode");
+    throw new Error(await extractApiErrorMessage(res, "Failed to update routing mode"));
   }
   return res.json() as Promise<RoutingModeResponse>;
 }

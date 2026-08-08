@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { proxyFetch } from "@/lib/api";
+import { normalizeReportJob } from "@/lib/reportJob";
 import { ReportJobSchema } from "@/types/api";
 
 /**
@@ -41,7 +42,7 @@ export async function GET(
       { status: 502 },
     );
   }
-  const parsed = ReportJobSchema.safeParse(json);
+  const parsed = ReportJobSchema.safeParse(normalizeReportJob(json));
   if (!parsed.success) {
     return NextResponse.json(
       { error: "upstream_shape_mismatch" },

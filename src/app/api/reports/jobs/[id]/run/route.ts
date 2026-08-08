@@ -1,10 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { proxyFetch } from "@/lib/api";
+import { toRunReportJobResponse } from "@/lib/reportJob";
 import { RunReportJobResponseSchema } from "@/types/api";
 
 /**
  * POST /api/reports/jobs/[id]/run — trigger execution of a queued report job.
- * Proxies to POST /reports/:id/run on the backend.
+ *
+ * Proxies to `POST /reports/jobs/:id/run` — note the `/jobs` segment. This
+ * route previously called `POST /reports/:id/run`, which matches NO handler on
+ * `ReportsController` (its run handler is declared `@Post('jobs/:id/run')`),
+ * so every "Run Now" click came back 404 "Cannot POST /reports/<uuid>/run".
+ *
+ * The backend answers with the full updated `report_jobs` row keyed on `id`;
+ * `RunReportJobResponseSchema` wants `{ jobId, status }`, hence the reduce.
  */
 export async function POST(
   req: NextRequest,
@@ -14,7 +22,7 @@ export async function POST(
 
   const upstream = await proxyFetch(
     req,
-    `/reports/${encodeURIComponent(id)}/run`,
+    `/reports/jobs/${encodeURIComponent(id)}/run`,
     { method: "POST" },
   );
 
@@ -41,7 +49,9 @@ export async function POST(
       { status: 502 },
     );
   }
-  const parsed = RunReportJobResponseSchema.safeParse(json);
+  const parsed = RunReportJobResponseSchema.safeParse(
+    toRunReportJobResponse(json),
+  );
   if (!parsed.success) {
     return NextResponse.json(
       { error: "upstream_shape_mismatch" },

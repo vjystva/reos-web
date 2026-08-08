@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusPill } from "@/components/StatusPill";
-import { roleLabel, type AppRole } from "@/components/nav-config";
+import { roleLabel, userLabel, type AppRole } from "@/components/nav-config";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useDealers } from "@/hooks/useDealers";
 import { useProjects } from "@/hooks/useProjects";
@@ -197,7 +197,10 @@ export default function LeadRoutingSettingsPage() {
         label:
           u.role === "dealer"
             ? `${nameById.get(u.id) ?? u.email} · Dealer`
-            : `${u.email} · ${roleLabel(u.role as AppRole)}`,
+            : // Derived display name rather than the raw address, matching the
+              // task owner picker. The email stays appended because routing
+              // rules are audited and the address is the unambiguous key.
+              `${userLabel(u.email)} · ${roleLabel(u.role as AppRole)} · ${u.email}`,
       }));
     // Keep any already-assigned owner selectable even if it is not in the list
     // (e.g. a deactivated account), so opening the page cannot silently drop it.

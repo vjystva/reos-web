@@ -46,10 +46,12 @@ import {
   dueTitle,
   ownerLabel,
   snoozedDueDate,
+  taskOwnerOptions,
   taskResourceHref,
   taskResourceLabel,
   type BucketedTasks,
 } from "@/lib/taskBoard";
+import { OwnerCombobox } from "@/components/OwnerCombobox";
 import { formatDate } from "@/lib/utils";
 import {
   TASK_PRIORITIES,
@@ -301,6 +303,10 @@ function TasksContent() {
   const deleteMutation = useDeleteTaskMutation();
 
   const users = React.useMemo(() => usersQuery.data?.data ?? [], [usersQuery.data]);
+  const ownerFilterOptions = React.useMemo(
+    () => taskOwnerOptions(users, ownerFilter),
+    [users, ownerFilter],
+  );
   const ownerById = React.useMemo(() => {
     const map = new Map<string, string>();
     for (const u of users) map.set(u.id, ownerLabel(u));
@@ -530,19 +536,15 @@ function TasksContent() {
         <label className="sr-only" htmlFor="filter-owner">
           Owner
         </label>
-        <Select
+        <OwnerCombobox
           id="filter-owner"
+          users={ownerFilterOptions}
           value={ownerFilter}
-          onChange={(e) => setOwnerFilter(e.target.value)}
+          onChange={setOwnerFilter}
+          placeholder="All owners"
+          emptyOptionLabel="All owners"
           className="w-44"
-        >
-          <option value="">All owners</option>
-          {users.map((u) => (
-            <option key={u.id} value={u.id}>
-              {ownerLabel(u)}
-            </option>
-          ))}
-        </Select>
+        />
 
         <label className="sr-only" htmlFor="filter-status">
           Status

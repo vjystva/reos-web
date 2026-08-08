@@ -25,10 +25,18 @@ import {
   collectionIndicatorClass,
   collectionPercent,
   toAmount,
+  ACTIVE_BOOKING_STATUSES,
   REGISTERED_BOOKING_STATUSES,
 } from "@/lib/bookingTone";
+import { allowedBookingTransitions, requiresCancelReason } from "@/lib/bookingTransitions";
+import { useTransitionBookingStatusMutation } from "@/hooks/useTransitionBookingStatusMutation";
 import { formatDate, inr } from "@/lib/utils";
-import { BookingsResponseSchema, type Booking } from "@/types/api";
+import {
+  BOOKING_STATUSES,
+  BookingsResponseSchema,
+  type Booking,
+  type BookingLifecycleStatus,
+} from "@/types/api";
 
 async function fetchBookings(status?: string): Promise<{ data: Booking[]; total: number }> {
   const qs = new URLSearchParams();
@@ -163,8 +171,84 @@ const COLUMNS: { key: string; label: string; numeric?: boolean }[] = [
   { key: "owner", label: "Owner" },
   { key: "partner", label: "Partner" },
   { key: "status", label: "Stage" },
+  { key: "advance", label: "Advance to" },
   { key: "actions", label: "" },
 ];
+
+/**
+ * Per-row lifecycle control.
+ *
+ * `PATCH /bookings/:id/status` has existed on the backend since feat-0003 but
+ * nothing in the web app ever called it — there was no way to move a booking
+ * from `application_received` through to `registered` (or cancel one) from
+ * the UI at all. Options are restricted to the transitions the backend's
+ * `ALLOWED_BOOKING_TRANSITIONS` actually permits, and `cancelled` collects
+ * the `cancelReason` the service requires.
+ */
+function BookingStageControl({
+  bookingId,
+  status,
+}: {
+  bookingId: string;
+  status: string;
+}) {
+  const mutation = useTransitionBookingStatusMutation();
+  const [error, setError] = React.useState<string | null>(null);
+  const targets = allowedBookingTransitions(status);
+
+  if (targets.length === 0) {
+    return <span className="text-[11px] text-muted-foreground">—</span>;
+  }
+
+  function move(toStatus: BookingLifecycleStatus) {
+    setError(null);
+    const body: {
+      toStatus: BookingLifecycleStatus;
+      cancelReason?: string;
+    } = { toStatus };
+
+    if (requiresCancelReason(toStatus)) {
+      const reason = window.prompt("Reason for cancelling this booking?");
+      // Empty/aborted prompt: bail rather than send a request the backend
+      // will reject with "cancelReason is required".
+      if (!reason || !reason.trim()) return;
+      body.cancelReason = reason.trim();
+    }
+
+    mutation.mutate(
+      { bookingId, body },
+      {
+        onError: (err) =>
+          setError(err instanceof Error ? err.message : "Transition failed"),
+      },
+    );
+  }
+
+  return (
+    <div className="space-y-1">
+      <Select
+        aria-label={`Advance booking ${bookingId}`}
+        value=""
+        disabled={mutation.isPending}
+        className="w-40"
+        onChange={(e) => {
+          const v = e.target.value as BookingLifecycleStatus | "";
+          if (v) move(v);
+        }}
+      >
+        <option value="">{mutation.isPending ? "Saving…" : "Move to…"}</option>
+        {targets.map((s) => (
+          <option key={s} value={s}>
+            {bookingStatusLabel(s)}
+          </option>
+        ))}
+      </Select>
+      {error ? (
+        <p className="max-w-[12rem] text-[11px] text-destructive">{error}</p>
+      ) : null}
+    </div>
+  );
+}
 
 export default function BookingsPage() {
   const [statusFilter, setStatusFilter] = React.useState("");
@@ -204,8 +288,10 @@ export default function BookingsPage() {
     const registered = bookings.filter((b) =>
       REGISTERED_BOOKING_STATUSES.includes((b.status ?? "").toLowerCase()),
     ).length;
-    const active = bookings.filter(
-      (b) => (b.status ?? "").toLowerCase() === "confirmed",
+    // `approved` is the backend's confirmation point — there is no
+    // `confirmed` status upstream, so this tile always read 0 before.
+    const active = bookings.filter((b) =>
+      ACTIVE_BOOKING_STATUSES.includes((b.status ?? "").toLowerCase()),
     ).length;
     return { bookedValue, collected, outstanding, registered, active };
   }, [bookings]);
@@ -239,11 +325,18 @@ export default function BookingsPage() {
               className="w-40"
             >
               <option value="">All statuses</option>
-              <option value="draft">Draft</option>
-              <option value="registered">Registered</option>
-              <option value="confirmed">Confirmed</option>
-              <option value="completed">Completed</option>
-              <option value="cancelled">Cancelled</option>
+              {/*
+                These MUST be the backend's `BOOKING_STATUSES`. The filter used
+                to offer draft/confirmed/completed — none of which exist
+                upstream — and `GET /bookings?status=draft` answers
+                400 "status must be one of the following values: …", blanking
+                the entire table the moment the filter was touched.
+              */}
+              {BOOKING_STATUSES.map((s) => (
+                <option key={s} value={s}>
+                  {bookingStatusLabel(s)}
+                </option>
+              ))}
             </Select>
           </>
         }
@@ -390,6 +483,9 @@ export default function BookingsPage() {
                     <StatusPill tone={bookingStatusTone(b.status)}>
                       {bookingStatusLabel(b.status)}
                     </StatusPill>
+                  </TableCell>
+                  <TableCell>
+                    <BookingStageControl bookingId={b.id} status={b.status} />
                   </TableCell>
                   <TableCell>
                     <div className="flex justify-end gap-2 whitespace-nowrap">

@@ -27,7 +27,7 @@ describe("doRefresh", () => {
 
     const result = await doRefresh("test-token");
 
-    expect(result).toEqual({ accessToken: "new-token" });
+    expect(result).toEqual({ accessToken: "new-token", refreshToken: "rt" });
     expect(global.fetch).toHaveBeenCalledWith(
       "http://backend.test/auth/refresh",
       expect.objectContaining({
@@ -120,8 +120,8 @@ describe("refreshOrRedirect", () => {
     const result2 = await promise2;
 
     // Both callers should receive the same value (deep equal)
-    expect(result1).toEqual({ accessToken: "new-token" });
-    expect(result2).toEqual({ accessToken: "new-token" });
+    expect(result1).toEqual({ accessToken: "new-token", refreshToken: "rt" });
+    expect(result2).toEqual({ accessToken: "new-token", refreshToken: "rt" });
     // fetch should have been called exactly once (deduplication)
     expect(global.fetch).toHaveBeenCalledTimes(1);
   });
@@ -139,11 +139,11 @@ describe("refreshOrRedirect", () => {
 
     // First refresh
     const result1 = await refreshOrRedirect("rt");
-    expect(result1).toEqual({ accessToken: "new-token" });
+    expect(result1).toEqual({ accessToken: "new-token", refreshToken: "rt" });
 
     // Second independent call should trigger a new fetch
     const result2 = await refreshOrRedirect("rt");
-    expect(result2).toEqual({ accessToken: "new-token" });
+    expect(result2).toEqual({ accessToken: "new-token", refreshToken: "rt" });
 
     expect(global.fetch).toHaveBeenCalledTimes(2);
   });

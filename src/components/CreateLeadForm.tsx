@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { ErrorBanner } from "@/components/ErrorBanner";
+import { inr } from "@/lib/utils";
 import { useDealers } from "@/hooks/useDealers";
 import {
   CreateLeadRequestSchema,
@@ -29,6 +30,20 @@ const LABEL = "block text-[11px] uppercase tracking-wider text-muted-foreground"
 /** Inline per-field validation message. */
 const FIELD_ERROR = "text-[11px] text-destructive";
 const OPTIONAL = "normal-case tracking-normal text-muted-foreground/70";
+
+/**
+ * Live "₹1.5 Cr" / "₹15.0 L" echo under a raw-digit budget input — miscounted
+ * zeros are the single easiest data-entry error on these two fields. Derived
+ * from the current input string on every render; no state, no effect.
+ * Returns null for empty/invalid input so nothing flickers while typing.
+ */
+function budgetHint(raw: string): string | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  const n = Number(trimmed);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return inr(n);
+}
 
 interface CreateLeadFormProps {
   isSubmitting: boolean;
@@ -238,7 +253,15 @@ export function CreateLeadForm({
             onChange={(e) => setBudgetMin(e.target.value)}
             placeholder="5000000"
             className="font-mono tabular-nums"
+            aria-describedby="lead-budget-min-hint"
           />
+          <p
+            id="lead-budget-min-hint"
+            aria-live="polite"
+            className="min-h-[1rem] text-[11px] text-muted-foreground"
+          >
+            {budgetHint(budgetMin) ?? ""}
+          </p>
           {fieldErrors.budgetMin && <p className={FIELD_ERROR}>{fieldErrors.budgetMin}</p>}
         </div>
         <div className="space-y-1">
@@ -253,7 +276,15 @@ export function CreateLeadForm({
             onChange={(e) => setBudgetMax(e.target.value)}
             placeholder="15000000"
             className="font-mono tabular-nums"
+            aria-describedby="lead-budget-max-hint"
           />
+          <p
+            id="lead-budget-max-hint"
+            aria-live="polite"
+            className="min-h-[1rem] text-[11px] text-muted-foreground"
+          >
+            {budgetHint(budgetMax) ?? ""}
+          </p>
           {fieldErrors.budgetMax && <p className={FIELD_ERROR}>{fieldErrors.budgetMax}</p>}
         </div>
       </div>

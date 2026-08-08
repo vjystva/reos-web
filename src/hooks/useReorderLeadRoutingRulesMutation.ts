@@ -1,5 +1,6 @@
 "use client";
 
+import { extractApiErrorMessage } from "@/lib/mutationError";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type {
   LeadRoutingRulesResponse,
@@ -19,13 +20,7 @@ async function reorderLeadRoutingRules(
     throw new Error("unauthorized");
   }
   if (!res.ok) {
-    const err = (await res.json().catch(() => ({}))) as {
-      message?: string;
-      error?: string;
-    };
-    throw new Error(
-      err.message ?? err.error ?? "Failed to reorder routing rules",
-    );
+    throw new Error(await extractApiErrorMessage(res, "Failed to reorder routing rules"));
   }
   return res.json() as Promise<LeadRoutingRulesResponse>;
 }

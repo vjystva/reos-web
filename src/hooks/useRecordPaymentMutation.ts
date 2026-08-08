@@ -43,6 +43,9 @@ export function useRecordPaymentMutation() {
       void queryClient.invalidateQueries({
         queryKey: ["payment-schedule", vars.bookingId],
       });
+      // The booking's own status can move on the back of a payment, and the
+      // list tiles aggregate collected amounts.
+      void queryClient.invalidateQueries({ queryKey: ["bookings"] });
     },
   });
 }

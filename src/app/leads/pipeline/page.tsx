@@ -1,17 +1,32 @@
 "use client";
 
+import * as React from "react";
 import { useLeadPipeline, useUpdateLeadStatus, PIPELINE_STATUSES } from "@/hooks/useLeadPipeline";
-import type { Lead } from "@/types/api";
+import { LEAD_STAGES, type Lead, type LeadStage } from "@/types/api";
+import { stageLabel } from "@/lib/utils";
 
 function formatDate(dateStr: string): string {
   const d = new Date(dateStr);
   return d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
 }
 
-const OTHER_STATUSES = PIPELINE_STATUSES.filter(() => true);
+/**
+ * The "Move to…" dropdown must emit CANONICAL backend stage values
+ * (`new | contacted | site_visit_scheduled | …`), not the board's display
+ * column names.
+ *
+ * `PIPELINE_STATUSES` are display labels ("New", "Site Visit", "Converted")
+ * produced by `normaliseStatus()` for grouping — several of them ("Site
+ * Visit", "Converted") are not backend stages at all. Sending one produced
+ * 400 "toStage must be one of the following values: new, contacted,
+ * site_visit_scheduled, site_visit_done, negotiation, booking, lost", so
+ * every stage move from this board silently did nothing.
+ */
+const MOVE_TARGETS: LeadStage[] = LEAD_STAGES;
 
 function LeadCard({ lead }: { lead: Lead }) {
-  const { mutate: updateStatus } = useUpdateLeadStatus();
+  const { mutate: updateStatus, isPending, error } = useUpdateLeadStatus();
+  const [moveError, setMoveError] = React.useState<string | null>(null);
 
   return (
     <div
@@ -40,20 +55,37 @@ function LeadCard({ lead }: { lead: Lead }) {
           padding: "2px 4px",
           cursor: "pointer",
         }}
-        defaultValue=""
+        value=""
+        disabled={isPending}
         onChange={(e) => {
-          if (e.target.value) updateStatus({ id: lead.id, status: e.target.value });
+          const toStage = e.target.value;
+          if (!toStage) return;
+          setMoveError(null);
+          updateStatus(
+            { id: lead.id, status: toStage },
+            {
+              onError: (err) =>
+                setMoveError(
+                  err instanceof Error ? err.message : "Stage move failed",
+                ),
+            },
+          );
         }}
       >
         <option value="" disabled>
-          Move to…
+          {isPending ? "Moving…" : "Move to…"}
         </option>
-        {OTHER_STATUSES.map((s) => (
+        {MOVE_TARGETS.filter((s) => s !== lead.stage).map((s) => (
           <option key={s} value={s}>
-            {s}
+            {stageLabel(s)}
           </option>
         ))}
       </select>
+      {moveError || error ? (
+        <div style={{ color: "#b91c1c", fontSize: 11, marginTop: 4 }}>
+          {moveError ?? (error as Error).message}
+        </div>
+      ) : null}
     </div>
   );
 }

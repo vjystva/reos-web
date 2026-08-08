@@ -10,9 +10,18 @@ import { isDemoRequest, getDemoPayments } from "@/lib/demo";
 /**
  * GET /api/payments?bookingId=<id>
  *
- * Proxies to GET /payments?bookingId= on the backend.
- * Returns payment history for the booking, newest-first.
- * Returns 400 if bookingId is missing.
+ * Proxies to `GET /bookings/:bookingId/payments` on the backend
+ * (`PaymentsController.list`, `ListPaymentsDto`).
+ *
+ * There is NO top-level `/payments` collection upstream — every payment route
+ * is nested under its booking. This route used to call
+ * `GET /payments?bookingId=…`, which 404s ("Cannot GET /payments"), so the
+ * payment-history table on the booking payments page never loaded.
+ *
+ * `ListPaymentsDto` whitelists only `milestoneId | status | page | pageSize`
+ * and the backend runs `forbidNonWhitelisted`, so `bookingId`/`sort`/`order`
+ * must NOT be forwarded — they were also part of the original 400/404.
+ * Ordering is newest-first upstream already.
  */
 export async function GET(req: NextRequest): Promise<NextResponse> {
   const url = new URL(req.url);
@@ -29,12 +38,18 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json(getDemoPayments(bookingId), { status: 200 });
   }
 
-  // Forward with sort=createdAt&order=desc if backend supports it (N2 from backend review).
-  const qs = new URLSearchParams(url.searchParams);
-  if (!qs.has("sort")) qs.set("sort", "createdAt");
-  if (!qs.has("order")) qs.set("order", "desc");
+  // Forward only the params ListPaymentsDto accepts.
+  const qs = new URLSearchParams();
+  for (const key of ["milestoneId", "status", "page", "pageSize"]) {
+    const v = url.searchParams.get(key);
+    if (v) qs.set(key, v);
+  }
+  const suffix = qs.toString() ? `?${qs.toString()}` : "";
 
-  const upstream = await proxyFetch(req, `/payments?${qs.toString()}`);
+  const upstream = await proxyFetch(
+    req,
+    `/bookings/${encodeURIComponent(bookingId)}/payments${suffix}`,
+  );
 
   if (upstream.status === 401) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
@@ -69,11 +84,18 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 /**
  * POST /api/payments
  *
- * Records a payment against a milestone.
- * Body: { milestoneId, amount, mode, referenceNumber?, notes? }
+ * Records a payment against a milestone. Proxies to
+ * `POST /bookings/:bookingId/payments` (`RecordPaymentDto`).
+ *
+ * Body: { bookingId, milestoneId, amount, paymentDate, paymentMode,
+ *         referenceNumber?, notes? }
+ *
+ * `bookingId` is consumed here to build the upstream path and is STRIPPED
+ * before forwarding — the backend's `forbidNonWhitelisted` validator answers
+ * 400 "property bookingId should not exist" otherwise.
  *
  * Behaviour:
- *  - 400 on Zod validation failure (no upstream call) — mandatory fix B2.
+ *  - 400 on Zod validation failure (no upstream call).
  *  - 401 returned to browser if upstream auth fails.
  *  - 4xx/5xx from upstream passed through with body intact.
  *  - 502 on upstream shape mismatch.
@@ -106,11 +128,17 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     );
   }
 
-  const upstream = await proxyFetch(req, "/payments", {
-    method: "POST",
-    body: JSON.stringify(bodyParsed.data),
-    headers: { "Content-Type": "application/json" },
-  });
+  const { bookingId, ...upstreamBody } = bodyParsed.data;
+
+  const upstream = await proxyFetch(
+    req,
+    `/bookings/${encodeURIComponent(bookingId)}/payments`,
+    {
+      method: "POST",
+      body: JSON.stringify(upstreamBody),
+      headers: { "Content-Type": "application/json" },
+    },
+  );
 
   if (upstream.status === 401) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });

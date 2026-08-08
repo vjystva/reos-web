@@ -6,6 +6,7 @@ import {
 } from "@/lib/api";
 
 const DEFAULT_ACCESS_TTL_SECONDS = 15 * 60;
+const REFRESH_MAX_AGE_SECONDS = 7 * 24 * 60 * 60;
 
 /**
  * Direct refresh endpoint. Reads the `reos_refresh` cookie, calls the
@@ -50,5 +51,19 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     path: "/",
     maxAge: DEFAULT_ACCESS_TTL_SECONDS,
   });
+  // The refresh token is ROTATED server-side on every use — the old one is
+  // revoked the instant this call succeeds. Not persisting the new one here
+  // means the next refresh attempt presents an already-revoked token, which
+  // the backend treats as replay and burns the entire token family,
+  // permanently killing the session. See src/lib/api.ts's module doc.
+  if (result.refreshToken) {
+    res.cookies.set(REFRESH_COOKIE, result.refreshToken, {
+      httpOnly: true,
+      secure: isProd,
+      sameSite: "lax",
+      path: "/",
+      maxAge: REFRESH_MAX_AGE_SECONDS,
+    });
+  }
   return res;
 }

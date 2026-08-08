@@ -3,6 +3,7 @@
 import * as React from "react";
 import { Suspense } from "react";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
+import Link from "next/link";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ErrorBanner } from "@/components/ErrorBanner";
@@ -19,6 +20,7 @@ import {
 } from "@/components/ui/sheet";
 import { useProjects } from "@/hooks/useProjects";
 import { useCreateProjectMutation } from "@/hooks/useCreateProjectMutation";
+import { useLead } from "@/hooks/useLead";
 import type { CreateProjectRequest } from "@/types/api";
 
 const PAGE_SIZE = 12;
@@ -123,10 +125,51 @@ function ProjectSearch() {
   );
 }
 
+/**
+ * Conversion banner — shown when the user landed here from a lead's
+ * "Convert to Booking" (`?leadId=…&intent=book`). There is no
+ * lead→booking endpoint on the backend; a booking is created by
+ * `POST /bookings` from the unit-selection flow, so this page is step 1.
+ */
+function ConversionBanner({ leadId }: { leadId: string }) {
+  const leadQ = useLead(leadId);
+  const who = leadQ.data?.name ?? "this lead";
+
+  return (
+    <div className="rounded-sm border border-accent/30 bg-accent/10 p-2.5">
+      <p className="text-[11px] uppercase tracking-wider text-muted-foreground">
+        Converting to booking
+      </p>
+      <p className="mt-1 text-xs text-foreground">
+        Booking for <span className="font-medium">{who}</span> — open a project,
+        then pick an available unit. The lead is carried through and
+        pre-selected on the booking form.
+      </p>
+      <Link
+        href={`/dashboard/leads/${encodeURIComponent(leadId)}`}
+        className="mt-1.5 inline-block text-[11px] text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+      >
+        ← Back to the lead
+      </Link>
+    </div>
+  );
+}
+
 function InventoryContent() {
   const params = useSearchParams();
   const search = params.get("search") ?? "";
   const page = Number(params.get("page") ?? "1") || 1;
+  const leadId = params.get("leadId");
+
+  // Params that must survive the drill-down into a project (the conversion
+  // context); pagination/search are page-local and deliberately dropped.
+  const carryQuery = React.useMemo(() => {
+    const next = new URLSearchParams();
+    if (leadId) next.set("leadId", leadId);
+    const intent = params.get("intent");
+    if (intent) next.set("intent", intent);
+    return next.toString();
+  }, [leadId, params]);
 
   const [sheetOpen, setSheetOpen] = React.useState(false);
   const [formError, setFormError] = React.useState<string | null>(null);
@@ -159,6 +202,8 @@ function InventoryContent() {
           </Button>
         }
       />
+
+      {leadId ? <ConversionBanner leadId={leadId} /> : null}
 
       <div className="max-w-sm">
         <ProjectSearch />
@@ -202,7 +247,7 @@ function InventoryContent() {
         <>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {q.data!.data.map((p) => (
-              <ProjectCard key={p.id} project={p} />
+              <ProjectCard key={p.id} project={p} carryQuery={carryQuery} />
             ))}
           </div>
           <ProjectsPagination

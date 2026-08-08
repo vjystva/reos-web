@@ -1,5 +1,6 @@
 "use client";
 
+import { extractApiErrorMessage } from "@/lib/mutationError";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 async function deleteLeadRoutingRule(ruleId: string): Promise<void> {
@@ -12,11 +13,7 @@ async function deleteLeadRoutingRule(ruleId: string): Promise<void> {
     throw new Error("unauthorized");
   }
   if (!res.ok) {
-    const err = (await res.json().catch(() => ({}))) as {
-      message?: string;
-      error?: string;
-    };
-    throw new Error(err.message ?? err.error ?? "Failed to delete routing rule");
+    throw new Error(await extractApiErrorMessage(res, "Failed to delete routing rule"));
   }
 }
 

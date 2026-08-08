@@ -6,8 +6,14 @@ import { Search } from "lucide-react";
 import { Select } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { useUsers } from "@/hooks/useUsers";
 import { LEAD_STAGES } from "@/types/api";
 import { stageLabel } from "@/lib/utils";
+
+/** "priya.shah@acme.in" -> "priya.shah" — users have no display-name field. */
+function userLabel(email: string): string {
+  return email.split("@")[0] || email;
+}
 
 const FIELD_LABEL =
   "text-[11px] uppercase tracking-wider text-muted-foreground";
@@ -24,6 +30,21 @@ export function PipelineFilters() {
 
   const [localSearch, setLocalSearch] = React.useState(search);
   React.useEffect(() => setLocalSearch(search), [search]);
+
+  // `assignedDealerId` is a `users.id` UUID upstream and `ListLeadsDto` marks
+  // it `@IsUUID()`. This used to be a free-text "Dealer id" box, so typing
+  // anything at all sent a non-UUID and the backend answered
+  // 400 "assignedDealerId must be a UUID" — the whole table blanked with
+  // "Failed to load leads." on the first keystroke. Pick from the real roster
+  // instead so only valid ids can ever be sent.
+  const usersQuery = useUsers();
+  const assignees = React.useMemo(
+    () =>
+      (usersQuery.data?.data ?? [])
+        .slice()
+        .sort((a, b) => a.email.localeCompare(b.email)),
+    [usersQuery.data],
+  );
 
   // 300ms debounce on search.
   React.useEffect(() => {
@@ -106,13 +127,22 @@ export function PipelineFilters() {
 
       <label className="flex flex-col gap-1">
         <span className={FIELD_LABEL}>Dealer</span>
-        <Input
+        <Select
           value={dealer}
           onChange={(e) => setParam("dealer", e.target.value)}
-          placeholder="Dealer id"
-          aria-label="Filter by dealer id"
-          className="w-40 font-mono"
-        />
+          aria-label="Filter by dealer"
+          className="w-52"
+          disabled={usersQuery.isLoading}
+        >
+          <option value="">
+            {usersQuery.isError ? "Roster unavailable" : "All dealers"}
+          </option>
+          {assignees.map((u) => (
+            <option key={u.id} value={u.id}>
+              {userLabel(u.email)} · {u.role.replace(/_/g, " ")}
+            </option>
+          ))}
+        </Select>
       </label>
 
       {anyActive ? (

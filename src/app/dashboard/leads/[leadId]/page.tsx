@@ -1,7 +1,7 @@
 "use client";
 import * as React from "react";
 import Link from "next/link";
-import { ChevronLeft } from "lucide-react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -15,7 +15,8 @@ import { TemperatureBadge } from "@/components/TemperatureBadge";
 import { ConvertLeadButton } from "@/components/ConvertLeadButton";
 import { useLead } from "@/hooks/useLead";
 import { useDealer } from "@/hooks/useDealer";
-import { useUpdateLeadMutation } from "@/hooks/useUpdateLeadMutation";
+import { useLeadActivities } from "@/hooks/useLeadActivities";
+import { useTransitionLeadStageMutation } from "@/hooks/useTransitionLeadStageMutation";
 import { formatDate, stageLabel } from "@/lib/utils";
 import {
   activityDotClass,
@@ -55,13 +56,51 @@ function Field({
 export default function LeadDetailPage({ params }: { params: { leadId: string } }) {
   const { leadId } = params;
   const { data: lead, isLoading, isError, refetch } = useLead(leadId);
-  const updateMutation = useUpdateLeadMutation(leadId);
+  /**
+   * Stage moves go through `PATCH /api/leads/:id/status` (BFF → backend
+   * `POST /leads/:id/stage`). They must NOT go through
+   * `useUpdateLeadMutation({ stage })`: `stage` is not on the backend's
+   * `UpdateLeadDto`, so `PATCH /leads/:id` answers
+   * 400 "property stage should not exist" every single time — which is what
+   * made every CTA on this page fail.
+   */
+  const stageMutation = useTransitionLeadStageMutation(leadId);
   // Channel-partner attribution (`leads.partner_id` → `dealers.id`). Disabled
   // until the lead loads and actually carries an attribution.
   const partnerQuery = useDealer(lead?.partnerId ?? null);
+  // `GET /leads/:id` carries no activity array — the timeline is its own
+  // endpoint (`GET /leads/:id/activities`), which is also where notes live.
+  const activityQuery = useLeadActivities(leadId);
+
+  /**
+   * `lost` needs a reason (backend: 400 "lostReason is required when moving to
+   * lost"), so selecting it stages an inline prompt instead of firing blind.
+   */
+  const [pendingLost, setPendingLost] = React.useState(false);
+  const [lostReason, setLostReason] = React.useState("");
 
   const handleStageChange = (stage: LeadStage) => {
-    updateMutation.mutate({ stage });
+    stageMutation.reset();
+    if (stage === "lost") {
+      setPendingLost(true);
+      return;
+    }
+    setPendingLost(false);
+    stageMutation.mutate({ status: stage });
+  };
+
+  const confirmLost = () => {
+    const reason = lostReason.trim();
+    if (!reason) return;
+    stageMutation.mutate(
+      { status: "lost", lostReason: reason },
+      {
+        onSuccess: () => {
+          setPendingLost(false);
+          setLostReason("");
+        },
+      },
+    );
   };
 
   if (isLoading) {
@@ -87,7 +126,20 @@ export default function LeadDetailPage({ params }: { params: { leadId: string } 
 
   const stageLocked = isTerminalLeadStage(lead.stage);
   const next = nextLeadStage(lead.stage);
-  const activity = lead.activity ?? [];
+  /**
+   * Timeline rows come from `lead_activities`. `lead.activity` is kept as a
+   * fallback for the demo/fixture shape, which does embed it.
+   */
+  const activity =
+    activityQuery.data?.data.map((a) => ({
+      id: a.id,
+      type: a.activityType,
+      description: a.body ?? undefined,
+      occurredAt: a.createdAt,
+    })) ??
+    lead.activity ??
+    [];
+  const stageErrorMessage = stageMutation.error?.message ?? null;
 
   return (
     <div className="space-y-4">
@@ -117,7 +169,7 @@ export default function LeadDetailPage({ params }: { params: { leadId: string } 
         <CardHeader className="pb-2">
           <div className="flex items-center justify-between gap-3">
             <CardTitle>Pipeline stage</CardTitle>
-            {updateMutation.isPending ? (
+            {stageMutation.isPending ? (
               <span className="text-[11px] text-muted-foreground">Updating…</span>
             ) : stageLocked ? (
               <span className="text-[11px] text-muted-foreground">
@@ -130,11 +182,58 @@ export default function LeadDetailPage({ params }: { params: { leadId: string } 
           <LeadStageStepper
             stage={lead.stage}
             onSelect={handleStageChange}
-            disabled={stageLocked || updateMutation.isPending}
+            disabled={stageLocked || stageMutation.isPending}
           />
-          {updateMutation.isError ? (
+
+          {/* `lost` is the one transition the backend refuses without a
+              reason, so capture it here rather than firing a doomed call. */}
+          {pendingLost ? (
+            <div className="mt-2 space-y-1.5 rounded-sm border border-destructive/30 bg-destructive/5 p-2.5">
+              <label
+                htmlFor="lead-lost-reason"
+                className="block text-[11px] uppercase tracking-wider text-muted-foreground"
+              >
+                Reason for loss (required)
+              </label>
+              <textarea
+                id="lead-lost-reason"
+                rows={2}
+                maxLength={500}
+                value={lostReason}
+                onChange={(e) => setLostReason(e.target.value)}
+                placeholder="Budget mismatch, went with a competitor…"
+                className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background"
+              />
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  disabled={!lostReason.trim() || stageMutation.isPending}
+                  onClick={confirmLost}
+                >
+                  {stageMutation.isPending ? "Marking lost…" : "Mark as lost"}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={stageMutation.isPending}
+                  onClick={() => {
+                    setPendingLost(false);
+                    setLostReason("");
+                    stageMutation.reset();
+                  }}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          ) : null}
+
+          {/* Surface the backend's own message — "Invalid stage transition:
+              contacted -> negotiation" is actionable; "try again" is not. */}
+          {stageErrorMessage ? (
             <p className="mt-2 text-[11px] text-destructive">
-              Could not update the stage. Try again.
+              {stageErrorMessage}
             </p>
           ) : null}
         </CardContent>
@@ -183,10 +282,24 @@ export default function LeadDetailPage({ params }: { params: { leadId: string } 
               </Field>
             </dl>
 
+            {/* Score breakdown — a disclosure, same `<details>` recipe as the
+                Tasks page "Completed" section. Collapsed by default: it is
+                diagnostic detail, not something the agent reads every visit. */}
             {lead.scoreBreakdown &&
             Object.keys(lead.scoreBreakdown).length > 0 ? (
-              <div className="mt-3 border-t border-border pt-3">
-                <p className={DT}>Score breakdown</p>
+              <details className="group mt-3 border-t border-border pt-3">
+                <summary
+                  className={`flex cursor-pointer list-none items-center gap-1.5 [&::-webkit-details-marker]:hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background ${DT}`}
+                >
+                  <ChevronRight
+                    className="h-3.5 w-3.5 transition-transform group-open:rotate-90"
+                    aria-hidden="true"
+                  />
+                  Score breakdown
+                  <span className="font-mono text-[11px] font-semibold tabular-nums text-foreground">
+                    {lead.aiScore ?? "—"}
+                  </span>
+                </summary>
                 <dl className="mt-1.5 space-y-1">
                   {Object.entries(lead.scoreBreakdown).map(([k, v]) => (
                     <div key={k} className="flex items-baseline justify-between gap-3">
@@ -199,7 +312,7 @@ export default function LeadDetailPage({ params }: { params: { leadId: string } 
                     </div>
                   ))}
                 </dl>
-              </div>
+              </details>
             ) : null}
           </CardContent>
         </Card>
@@ -210,7 +323,12 @@ export default function LeadDetailPage({ params }: { params: { leadId: string } 
             <CardTitle>Engagement</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            {activity.length === 0 ? (
+            {activityQuery.isLoading ? (
+              <div className="space-y-2">
+                <Skeleton className="h-3 w-3/4" />
+                <Skeleton className="h-3 w-1/2" />
+              </div>
+            ) : activity.length === 0 ? (
               <p className="text-xs text-muted-foreground">
                 No activity logged yet.
               </p>
@@ -257,10 +375,10 @@ export default function LeadDetailPage({ params }: { params: { leadId: string } 
                   size="sm"
                   variant="outline"
                   className="mt-2"
-                  disabled={updateMutation.isPending}
+                  disabled={stageMutation.isPending}
                   onClick={() => handleStageChange(next)}
                 >
-                  {updateMutation.isPending
+                  {stageMutation.isPending
                     ? "Updating…"
                     : `Advance to ${stageLabel(next)}`}
                 </Button>
@@ -285,7 +403,10 @@ export default function LeadDetailPage({ params }: { params: { leadId: string } 
             <CardTitle>Notes</CardTitle>
           </CardHeader>
           <CardContent>
-            <LeadNotesForm leadId={leadId} initialNotes={lead.notes ?? ""} />
+            {/* Notes are activity rows (`lead_activities.activity_type =
+                'note'`) — `leads` has no notes column, so saving appends to
+                the Engagement timeline rather than overwriting a field. */}
+            <LeadNotesForm leadId={leadId} />
           </CardContent>
         </Card>
 
@@ -298,7 +419,7 @@ export default function LeadDetailPage({ params }: { params: { leadId: string } 
               id="lead-stage-select"
               value={lead.stage}
               onChange={handleStageChange}
-              disabled={updateMutation.isPending || stageLocked}
+              disabled={stageMutation.isPending || stageLocked}
             />
             <p className="text-[11px] text-muted-foreground">
               {stageLocked

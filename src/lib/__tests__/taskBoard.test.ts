@@ -2,9 +2,13 @@ import {
   bucketTasks,
   dateInputToIso,
   dueLabel,
+  filterOwners,
+  isTaskOwnerRole,
   ownerLabel,
+  ownerMatches,
   snoozedDueDate,
   taskBucket,
+  taskOwnerOptions,
   taskResourceHref,
   taskResourceLabel,
 } from "@/lib/taskBoard";
@@ -168,9 +172,125 @@ describe("dateInputToIso", () => {
 });
 
 describe("ownerLabel", () => {
-  test("prefers name, falls back to email", () => {
+  test("prefers an explicit name when one is supplied", () => {
     expect(ownerLabel({ id: "u1", email: "a@b.com", name: "Asha" })).toBe("Asha");
-    expect(ownerLabel({ id: "u1", email: "a@b.com", name: "  " })).toBe("a@b.com");
-    expect(ownerLabel({ id: "u1", email: "a@b.com" })).toBe("a@b.com");
+  });
+
+  test("derives a display name from the email local-part", () => {
+    // `users` has no `name` column, so the label comes from the address.
+    expect(ownerLabel({ id: "u1", email: "asha.rao@demo.com" })).toBe("Asha Rao");
+    expect(ownerLabel({ id: "u2", email: "amit.manager@reos.com" })).toBe(
+      "Amit Manager",
+    );
+    expect(ownerLabel({ id: "u3", email: "agent1@reos.com" })).toBe("Agent1");
+  });
+
+  test("blank name falls through to the derived label", () => {
+    expect(ownerLabel({ id: "u1", email: "asha.rao@demo.com", name: "  " })).toBe(
+      "Asha Rao",
+    );
+  });
+
+  test("falls back to the raw email when the local-part is uuid-shaped", () => {
+    const email = "3f2b8c1a-4d5e-6f70-8901-abcdef123456@reos.com";
+    expect(ownerLabel({ id: "u1", email })).toBe(email);
+  });
+});
+
+describe("isTaskOwnerRole", () => {
+  test("accepts internal sales roles and admins", () => {
+    expect(isTaskOwnerRole("sales_agent")).toBe(true);
+    expect(isTaskOwnerRole("sales_manager")).toBe(true);
+    expect(isTaskOwnerRole("builder_admin")).toBe(true);
+  });
+
+  test("rejects external roles that never own an internal follow-up", () => {
+    expect(isTaskOwnerRole("dealer")).toBe(false);
+    expect(isTaskOwnerRole("customer")).toBe(false);
+  });
+
+  test("keeps rows whose role is unknown", () => {
+    expect(isTaskOwnerRole(undefined)).toBe(true);
+    expect(isTaskOwnerRole(null)).toBe(true);
+  });
+});
+
+describe("ownerMatches", () => {
+  const asha = { id: "u1", email: "asha.rao@demo.com", role: "sales_agent" };
+
+  test("matches on the derived name, not just the email", () => {
+    expect(ownerMatches(asha, "asha")).toBe(true);
+    expect(ownerMatches(asha, "Rao")).toBe(true);
+    expect(ownerMatches(asha, "asha rao")).toBe(true);
+  });
+
+  test("is order-insensitive across tokens", () => {
+    expect(ownerMatches(asha, "rao asha")).toBe(true);
+  });
+
+  test("still matches the raw address", () => {
+    expect(ownerMatches(asha, "demo.com")).toBe(true);
+  });
+
+  test("an empty query matches everything", () => {
+    expect(ownerMatches(asha, "   ")).toBe(true);
+  });
+
+  test("non-matching text is rejected", () => {
+    expect(ownerMatches(asha, "kunal")).toBe(false);
+  });
+});
+
+describe("taskOwnerOptions", () => {
+  const users = [
+    { id: "d1", email: "dealer.test.1782018963825@reos.com", role: "dealer" },
+    { id: "a1", email: "zara.khan@reos.com", role: "sales_agent" },
+    { id: "m1", email: "amit.manager@reos.com", role: "sales_manager" },
+    { id: "c1", email: "buyer@gmail.com", role: "customer" },
+  ];
+
+  test("drops dealer and customer rows", () => {
+    // Name-sorted: "Amit Manager" (m1) precedes "Zara Khan" (a1).
+    expect(taskOwnerOptions(users).map((u) => u.id)).toEqual(["m1", "a1"]);
+  });
+
+  test("sorts by display name, not by email", () => {
+    // "Amit Manager" < "Zara Khan" by name; the reverse by raw email.
+    expect(taskOwnerOptions(users).map((u) => ownerLabel(u))).toEqual([
+      "Amit Manager",
+      "Zara Khan",
+    ]);
+  });
+
+  test("retains an already-selected owner that fails the role filter", () => {
+    const ids = taskOwnerOptions(users, "d1").map((u) => u.id);
+    expect(ids).toContain("d1");
+    expect(ids).toHaveLength(3);
+  });
+
+  test("an unknown selected id adds nothing", () => {
+    expect(taskOwnerOptions(users, "nope")).toHaveLength(2);
+  });
+
+  test("does not mutate the input array", () => {
+    const input = [...users];
+    taskOwnerOptions(input, "d1");
+    expect(input.map((u) => u.id)).toEqual(["d1", "a1", "m1", "c1"]);
+  });
+});
+
+describe("filterOwners", () => {
+  const users = [
+    { id: "a1", email: "asha.rao@reos.com", role: "sales_agent" },
+    { id: "a2", email: "rbac.test.1782019795008@reos.com", role: "sales_agent" },
+    { id: "m1", email: "amit.manager@reos.com", role: "sales_manager" },
+  ];
+
+  test("narrows a flooded list to the typed name", () => {
+    expect(filterOwners(users, "amit").map((u) => u.id)).toEqual(["m1"]);
+  });
+
+  test("returns everything for an empty query", () => {
+    expect(filterOwners(users, "")).toHaveLength(3);
   });
 });

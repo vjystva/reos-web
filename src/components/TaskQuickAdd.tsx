@@ -5,9 +5,10 @@ import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { OwnerCombobox } from "@/components/OwnerCombobox";
 import {
   dateInputToIso,
-  ownerLabel,
+  taskOwnerOptions,
   type TaskOwnerOption,
 } from "@/lib/taskBoard";
 import {
@@ -50,6 +51,12 @@ export function TaskQuickAdd({
   const [resourceType, setResourceType] = React.useState<string>("");
   const [resourceId, setResourceId] = React.useState("");
   const [error, setError] = React.useState<string | null>(null);
+
+  // Role-filtered, name-sorted owner list — see `taskOwnerOptions`.
+  const ownerOptions = React.useMemo(
+    () => taskOwnerOptions(users, assignedTo),
+    [users, assignedTo],
+  );
 
   // Adopt the signed-in user once it arrives, without clobbering a manual pick.
   const touchedOwner = React.useRef(false);
@@ -140,23 +147,18 @@ export function TaskQuickAdd({
         <label className="sr-only" htmlFor="quick-owner">
           Owner
         </label>
-        {users.length > 0 ? (
-          <Select
+        {ownerOptions.length > 0 ? (
+          <OwnerCombobox
             id="quick-owner"
+            users={ownerOptions}
             value={assignedTo}
-            onChange={(e) => {
+            onChange={(next) => {
               touchedOwner.current = true;
-              setAssignedTo(e.target.value);
+              setAssignedTo(next);
             }}
+            placeholder="Owner…"
             className="w-40"
-          >
-            <option value="">Owner…</option>
-            {users.map((u) => (
-              <option key={u.id} value={u.id}>
-                {ownerLabel(u)}
-              </option>
-            ))}
-          </Select>
+          />
         ) : (
           <Input
             id="quick-owner"

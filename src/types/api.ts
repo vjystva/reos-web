@@ -150,6 +150,73 @@ export const UpdateLeadRequestSchema = z.object({
 export type UpdateLeadRequest = z.infer<typeof UpdateLeadRequestSchema>;
 
 /**
+ * Body for `PATCH /api/leads/:id/status` — the ONLY working stage-transition
+ * path. The BFF rewrites it to backend `POST /leads/:id/stage`
+ * ({ toStage, lostReason?, note? }).
+ *
+ * `stage` is NOT a member of the backend's `UpdateLeadDto`, so
+ * `PATCH /leads/:id` with `{ stage }` is rejected by the global whitelist
+ * validator ("property stage should not exist"). Never route a stage change
+ * through `UpdateLeadRequest`.
+ *
+ * `lostReason` is REQUIRED by the backend when `status === "lost"`
+ * (400 "lostReason is required when moving to lost" otherwise).
+ * `note` is free-form commentary and is REQUIRED by the backend for the
+ * `lost -> new` reactivation path.
+ */
+export const TransitionLeadStageRequestSchema = z.object({
+  status: LeadStageSchema,
+  lostReason: z.string().min(1).max(500).optional(),
+  note: z.string().min(1).max(500).optional(),
+});
+export type TransitionLeadStageRequest = z.infer<
+  typeof TransitionLeadStageRequestSchema
+>;
+
+/**
+ * Lead activity timeline — backend `GET /leads/:id/activities`. This is the
+ * real home for lead notes: the `leads` table has no `notes` column, so a
+ * "note" is an activity row with `activityType = "note"`.
+ * Mirrors backend `ACTIVITY_TYPES` in src/leads/pipeline.constants.ts.
+ */
+export const LEAD_ACTIVITY_TYPES = [
+  "note",
+  "call_logged",
+  "email_sent",
+  "follow_up_set",
+  "site_visit_logged",
+] as const;
+export type LeadActivityType = (typeof LEAD_ACTIVITY_TYPES)[number];
+export const LeadActivityTypeSchema = z.enum(LEAD_ACTIVITY_TYPES);
+
+export const LeadActivityRecordSchema = z.object({
+  id: z.string(),
+  activityType: z.string(),
+  body: z.string().nullable().optional(),
+  followUpAt: z.string().nullable().optional(),
+  createdBy: z.string().nullable().optional(),
+  createdAt: z.string(),
+});
+export type LeadActivityRecord = z.infer<typeof LeadActivityRecordSchema>;
+
+export const LeadActivitiesResponseSchema = paginatedSchema(
+  LeadActivityRecordSchema,
+);
+export type LeadActivitiesResponse = z.infer<
+  typeof LeadActivitiesResponseSchema
+>;
+
+/** Body for `POST /api/leads/:id/activities` → backend `CreateActivityDto`. */
+export const CreateLeadActivityRequestSchema = z.object({
+  activityType: LeadActivityTypeSchema,
+  body: z.string().min(1, "Notes cannot be empty").max(5000),
+  followUpAt: z.string().optional(),
+});
+export type CreateLeadActivityRequest = z.infer<
+  typeof CreateLeadActivityRequestSchema
+>;
+
+/**
  * Mirrors backend `LEAD_SOURCES` in src/leads/pipeline.constants.ts.
  * `channel_partner` (migration 032) marks a lead sourced by a firm from the
  * dealers directory; the firm itself is carried on `partnerId`.
@@ -198,6 +265,44 @@ export const LeadsResponseSchema = paginatedSchema(LeadSchema);
 export type LeadsResponse = z.infer<typeof LeadsResponseSchema>;
 
 // --- Bookings -------------------------------------------------------------
+
+/**
+ * The REAL booking lifecycle — source of truth is
+ * `reos-backend/src/bookings/booking.constants.ts` (`BOOKING_STATUSES`),
+ * mirrored by the DB CHECK on `bookings.status`.
+ *
+ * There is no `draft`, `confirmed` or `completed` status upstream. The list
+ * filter used to offer those three; `GET /bookings?status=draft` answers
+ * 400 ("status must be one of the following values: …"), which blanked the
+ * whole bookings table the moment anyone touched the filter.
+ * `approved` is the status that means "confirmed" (see
+ * `BOOKING_CONFIRMED_STATUS` upstream).
+ */
+export const BOOKING_STATUSES = [
+  "application_received",
+  "under_review",
+  "approved",
+  "payment_received",
+  "agreement_signed",
+  "registered",
+  "cancelled",
+] as const;
+export const BookingLifecycleStatusSchema = z.enum(BOOKING_STATUSES);
+export type BookingLifecycleStatus = z.infer<typeof BookingLifecycleStatusSchema>;
+
+/**
+ * Body for `PATCH /api/bookings/:id/status` -> backend
+ * `PATCH /bookings/:id/status` (`TransitionBookingStatusDto`).
+ * `cancelReason` is REQUIRED by the service when `toStatus === 'cancelled'`.
+ */
+export const TransitionBookingStatusRequestSchema = z.object({
+  toStatus: BookingLifecycleStatusSchema,
+  note: z.string().min(1).max(2000).optional(),
+  cancelReason: z.string().min(1).max(1000).optional(),
+});
+export type TransitionBookingStatusRequest = z.infer<
+  typeof TransitionBookingStatusRequestSchema
+>;
 
 export const BookingSchema = z
   .object({
@@ -270,6 +375,30 @@ export const CreateProjectRequestSchema = z.object({
 });
 export type CreateProjectRequest = z.infer<typeof CreateProjectRequestSchema>;
 
+// --- Facing directions ------------------------------------------------------
+
+/**
+ * Accepted by the backend `CreateUnitDto` AND `CreateTowerDto` (both use
+ * `@IsIn(FACING_DIRECTIONS)` from `properties/project.constants.ts`).
+ *
+ * Declared ABOVE the Towers block deliberately: `CreateTowerRequestSchema`
+ * references `FacingDirectionSchema` in its initialiser, and `const` bindings
+ * are in the temporal dead zone until evaluated — declaring this later in the
+ * file would throw a ReferenceError at module load.
+ */
+export const FACING_DIRECTIONS = [
+  "north",
+  "south",
+  "east",
+  "west",
+  "north_east",
+  "north_west",
+  "south_east",
+  "south_west",
+] as const;
+export const FacingDirectionSchema = z.enum(FACING_DIRECTIONS);
+export type FacingDirection = z.infer<typeof FacingDirectionSchema>;
+
 // --- Towers ---------------------------------------------------------------
 
 export const TowerSchema = z
@@ -279,11 +408,35 @@ export const TowerSchema = z
     projectId: z.string(),
     name: z.string(),
     totalFloors: z.number().int().nonnegative().optional(),
+    /**
+     * `facing` is the legacy/demo key. The real backend
+     * (`TowerResponseDto`) emits `facingDirection` — both are declared so
+     * neither is silently dropped by consumers reading a typed field.
+     */
     facing: z.string().nullable().optional(),
+    facingDirection: z.string().nullable().optional(),
+    isActive: z.boolean().optional(),
     createdAt: z.string().optional(),
+    updatedAt: z.string().optional(),
   })
   .passthrough();
 export type Tower = z.infer<typeof TowerSchema>;
+
+/**
+ * Mirrors the backend `CreateTowerDto` (`POST /projects/:projectId/towers`,
+ * builder_admin only). `facingDirection` is optional there; `totalFloors` is
+ * required and bounded 1..500 by `@Min(1) @Max(500)`.
+ */
+export const CreateTowerRequestSchema = z.object({
+  name: z.string().min(1, "Tower name is required").max(100),
+  totalFloors: z
+    .number()
+    .int("Total floors must be a whole number")
+    .min(1, "Must have at least 1 floor")
+    .max(500, "Must be 500 floors or fewer"),
+  facingDirection: FacingDirectionSchema.optional(),
+});
+export type CreateTowerRequest = z.infer<typeof CreateTowerRequestSchema>;
 
 /**
  * Canonical shape returned by `GET /projects/:id/towers` — same paginated
@@ -318,20 +471,6 @@ export const UNIT_STATUSES = [
 export const UnitStatusSchema = z.enum(UNIT_STATUSES);
 export type UnitStatus = z.infer<typeof UnitStatusSchema>;
 
-// Facing directions accepted by the backend CreateUnitDto.
-export const FACING_DIRECTIONS = [
-  "north",
-  "south",
-  "east",
-  "west",
-  "north_east",
-  "north_west",
-  "south_east",
-  "south_west",
-] as const;
-export const FacingDirectionSchema = z.enum(FACING_DIRECTIONS);
-export type FacingDirection = z.infer<typeof FacingDirectionSchema>;
-
 /**
  * Widened from feat-0001 (which only read `total` from the paginated envelope).
  * All new fields optional + passthrough so feat-0001's consumers are
@@ -343,9 +482,18 @@ export const UnitSchema = z
     unitNumber: z.string().optional(),
     floor: z.number().int().optional(),
     bedrooms: z.number().int().optional(),
+    /** `units.area_sqft` — the primary/chargeable area. Always sent. */
     area: z.number().optional(),
     /** alias used by inventory page */
     areaSqft: z.number().optional(),
+    /**
+     * Optional area breakdown (backend migration 033). `null` when the
+     * builder has not captured that figure. `balconyArea` can legitimately
+     * be `0`, so render logic must null-check, not truthiness-check.
+     */
+    superArea: z.number().nullable().optional(),
+    carpetArea: z.number().nullable().optional(),
+    balconyArea: z.number().nullable().optional(),
     facing: z.string().nullable().optional(),
     isCorner: z.boolean().optional(),
     towerId: z.string().nullable().optional(),
@@ -376,6 +524,18 @@ export const CreateUnitRequestSchema = z.object({
   floor: z.number().int().min(-10).max(500),
   bedrooms: z.number().int().min(0).max(20),
   area: z.number().positive("Area must be greater than 0"),
+  // Optional area breakdown. Mirrors the backend CreateUnitDto's
+  // `@Min(0.01)` on super/carpet and `@Min(0)` on balcony (a unit can have
+  // no balcony, which is distinct from "not captured" → field omitted).
+  superArea: z.number().positive("Super area must be greater than 0").optional(),
+  carpetArea: z
+    .number()
+    .positive("Carpet area must be greater than 0")
+    .optional(),
+  balconyArea: z
+    .number()
+    .nonnegative("Balcony area cannot be negative")
+    .optional(),
   facing: FacingDirectionSchema.optional(),
   isCorner: z.boolean().optional(),
 });
@@ -457,67 +617,155 @@ export type ErrorEnvelope = z.infer<typeof ErrorEnvelopeSchema>;
 
 // --- Payment Management (feat-0003) ---------------------------------------
 
-export const PaymentModeSchema = z.enum([
+/**
+ * Payment modes accepted by the backend — source of truth is
+ * `reos-backend/src/payments/payment.constants.ts` (`PAYMENT_MODES`).
+ * These are the literal values the DB CHECK constraint stores; the UI
+ * renders them through `paymentModeLabel()` in `@/lib/bookingTone`.
+ *
+ * Do NOT re-introduce the old uppercase spellings ("NEFT"/"RTGS"/"UPI") —
+ * `POST /bookings/:bookingId/payments` rejects them with 400
+ * ("paymentMode must be one of the following values: …").
+ */
+export const PAYMENT_MODES = [
   "cheque",
-  "NEFT",
-  "RTGS",
+  "neft",
+  "rtgs",
   "cash",
-  "UPI",
-]);
+  "upi",
+  "demand_draft",
+] as const;
+export const PaymentModeSchema = z.enum(PAYMENT_MODES);
 export type PaymentMode = z.infer<typeof PaymentModeSchema>;
 
-export const MilestoneStatusSchema = z.enum(["pending", "due", "paid", "overdue", "waived"]);
+/**
+ * `pending | partially_paid | paid` are the persisted backend values
+ * (`MILESTONE_STATUSES`). `due` / `overdue` / `waived` are additional
+ * *derived* values computed client-side in `usePaymentMilestones`, kept in
+ * the same union so `derivedStatus` and the wire `status` share a type.
+ */
+export const MilestoneStatusSchema = z.enum([
+  "pending",
+  "partially_paid",
+  "due",
+  "paid",
+  "overdue",
+  "waived",
+]);
 export type MilestoneStatus = z.infer<typeof MilestoneStatusSchema>;
 
+/**
+ * Wire shape of `GET /bookings/:bookingId/payment-schedule`
+ * (`PaymentScheduleResponseDto`). The backend calls the collected figure
+ * `totalConfirmedPaid`; every UI consumer reads `amountPaid`, so the
+ * transform normalises one onto the other (same pattern as `LeadSchema`'s
+ * `pipelineStage -> stage`).
+ */
 export const PaymentScheduleSchema = z
   .object({
     id: z.string(),
     name: z.string().optional(),
     bookingId: z.string(),
     totalAmount: z.number(),
-    amountPaid: z.number(),
+    amountPaid: z.number().optional(),
+    totalConfirmedPaid: z.number().optional(),
     outstanding: z.number().optional(),
   })
-  .passthrough();
+  .passthrough()
+  .transform((s) => ({
+    ...s,
+    amountPaid: s.amountPaid ?? s.totalConfirmedPaid ?? 0,
+  }));
 export type PaymentSchedule = z.infer<typeof PaymentScheduleSchema>;
 
+/**
+ * Wire shape of a milestone (`MilestoneResponseDto`). Backend field names are
+ * `amountDue` / `isOverdue`; the UI has always read `dueAmount` / `overdue`,
+ * so both are accepted and normalised here rather than renaming every
+ * consumer. `dueDate` is nullable upstream (a milestone may be triggered by
+ * `constructionTrigger` instead of a date).
+ */
 export const MilestoneSchema = z
   .object({
     id: z.string(),
     scheduleId: z.string().optional(),
     name: z.string(),
-    dueDate: z.string(),
-    dueAmount: z.number(),
+    dueDate: z.string().nullable().optional(),
+    dueAmount: z.number().optional(),
+    amountDue: z.number().optional(),
     amountPaid: z.number(),
     status: MilestoneStatusSchema.optional(),
     overdue: z.boolean().optional(),
+    isOverdue: z.boolean().optional(),
   })
-  .passthrough();
+  .passthrough()
+  .transform((m) => ({
+    ...m,
+    dueDate: m.dueDate ?? null,
+    dueAmount: m.dueAmount ?? m.amountDue ?? 0,
+    overdue: m.overdue ?? m.isOverdue ?? false,
+  }));
 export type Milestone = z.infer<typeof MilestoneSchema>;
 
+/**
+ * Wire shape of a payment (`PaymentResponseDto`). Backend sends
+ * `paymentMode` + `paymentDate` + `status: 'confirmed' | 'bounced'`; the UI
+ * reads `mode` and treats a non-bounced payment as "cleared". Normalised in
+ * the transform so `PaymentHistoryTable` keeps working unchanged.
+ */
 export const PaymentSchema = z
   .object({
     id: z.string(),
     bookingId: z.string().optional(),
     milestoneId: z.string().optional(),
     amount: z.number(),
-    mode: PaymentModeSchema,
+    mode: PaymentModeSchema.optional(),
+    paymentMode: PaymentModeSchema.optional(),
+    paymentDate: z.string().nullable().optional(),
     referenceNumber: z.string().nullable().optional(),
     receiptNumber: z.string().optional(),
-    status: z.enum(["cleared", "bounced"]).optional(),
-    createdAt: z.string(),
+    status: z.enum(["cleared", "confirmed", "bounced"]).optional(),
+    createdAt: z.string().optional(),
   })
-  .passthrough();
+  .passthrough()
+  .transform((p) => ({
+    ...p,
+    mode: (p.mode ?? p.paymentMode ?? "cash") as PaymentMode,
+    status: (p.status === "bounced" ? "bounced" : "cleared") as
+      | "cleared"
+      | "bounced",
+    // Prefer the business date the operator entered over the row's insert
+    // timestamp; fall back so the column is never blank.
+    createdAt: p.paymentDate ?? p.createdAt ?? "",
+  }));
 export type Payment = z.infer<typeof PaymentSchema>;
 
+/**
+ * Body for `POST /api/payments`, which the BFF forwards to
+ * `POST /bookings/:bookingId/payments` (`RecordPaymentDto`).
+ *
+ * `bookingId` is consumed by the BFF to build the upstream path and is
+ * stripped before forwarding — the backend's whitelist validator rejects it
+ * ("property bookingId should not exist"). `paymentDate` and `paymentMode`
+ * are REQUIRED upstream; the old `{ mode }` spelling and the missing
+ * `paymentDate` were what made this form 400 on every submit.
+ */
 export const RecordPaymentRequestSchema = z.object({
+  bookingId: z.string().min(1),
   milestoneId: z.string().min(1, "Select a milestone"),
   amount: z.number().positive("Enter an amount greater than ₹0"),
-  mode: PaymentModeSchema,
+  paymentDate: z.string().min(1, "Payment date is required"),
+  paymentMode: PaymentModeSchema,
   referenceNumber: z.string().optional(),
   notes: z.string().max(500, "Notes must be 500 characters or fewer").optional(),
 });
 export type RecordPaymentRequest = z.infer<typeof RecordPaymentRequestSchema>;
+
+/** Body the BFF sends to `PATCH /bookings/:id/payments/:paymentId/status`. */
+export const BouncePaymentRequestSchema = z.object({
+  bookingId: z.string().min(1),
+});
+export type BouncePaymentRequest = z.infer<typeof BouncePaymentRequestSchema>;
 
 export const RecordPaymentResponseSchema = z
   .object({
@@ -554,35 +802,82 @@ export const SITE_VISIT_STATUSES: SiteVisitStatus[] = [
   "cancelled",
 ];
 
+/**
+ * A site visit as consumed by the per-booking screens.
+ *
+ * IMPORTANT: `site_visits` rows are LEAD-scoped upstream — the table has no
+ * `booking_id` column and `SiteVisitResponseDto` carries `leadId` +
+ * `scheduledAt`. The per-booking BFF route resolves booking -> lead and
+ * stamps `bookingId` on each row, but both spellings are accepted here so
+ * the single-visit route (`GET /api/site-visits/:visitId`), which has no
+ * booking in hand, parses too.
+ */
 export const SiteVisitSchema = z
   .object({
     id: z.string(),
-    bookingId: z.string(),
+    bookingId: z.string().optional(),
+    leadId: z.string().optional(),
     tenantId: z.string().optional(),
-    visitDate: z.string(),
+    visitDate: z.string().optional(),
+    scheduledAt: z.string().optional(),
     status: SiteVisitStatusSchema,
     assignedAgentId: z.string().nullable().optional(),
     notes: z.string().nullable().optional(),
-    createdAt: z.string(),
+    createdAt: z.string().optional(),
   })
-  .passthrough();
+  .passthrough()
+  .transform((v) => ({
+    ...v,
+    visitDate: v.visitDate ?? v.scheduledAt ?? "",
+    createdAt: v.createdAt ?? "",
+  }));
 export type SiteVisit = z.infer<typeof SiteVisitSchema>;
 
+/**
+ * `site_visit_history` rows (`SiteVisitHistoryResponseDto`). Upstream sends
+ * `eventType` / `fromStatus` / `toStatus` / `actorId` / `note` / `changedAt`;
+ * the UI reads a flat `{ status, changedBy, notes, createdAt }`, so the two
+ * are reconciled here. `toStatus` is null for a pure `rescheduled` event —
+ * such a row keeps its previous status rather than dropping out.
+ */
 export const SiteVisitHistorySchema = z
   .object({
     id: z.string(),
     siteVisitId: z.string(),
-    status: SiteVisitStatusSchema,
+    status: SiteVisitStatusSchema.optional(),
+    eventType: z.string().optional(),
+    fromStatus: SiteVisitStatusSchema.nullable().optional(),
+    toStatus: SiteVisitStatusSchema.nullable().optional(),
     changedBy: z.string().nullable().optional(),
+    actorId: z.string().nullable().optional(),
     notes: z.string().nullable().optional(),
-    createdAt: z.string(),
+    note: z.string().nullable().optional(),
+    createdAt: z.string().optional(),
+    changedAt: z.string().optional(),
   })
-  .passthrough();
+  .passthrough()
+  .transform((h) => ({
+    ...h,
+    status: (h.status ??
+      h.toStatus ??
+      h.fromStatus ??
+      "scheduled") as SiteVisitStatus,
+    changedBy: h.changedBy ?? h.actorId ?? null,
+    notes: h.notes ?? h.note ?? null,
+    createdAt: h.createdAt ?? h.changedAt ?? "",
+  }));
 export type SiteVisitHistory = z.infer<typeof SiteVisitHistorySchema>;
 
 export const SiteVisitsResponseSchema = paginatedSchema(SiteVisitSchema);
 export type SiteVisitsResponse = z.infer<typeof SiteVisitsResponseSchema>;
 
+/**
+ * Browser-side body for reschedule/cancel. These keep the UI's field names;
+ * the BFF renames them to the backend DTO spellings
+ * (`newScheduledAt` / `note` and `cancellationReason`) before forwarding.
+ * Sending these names straight through returns 400 — the backend runs a
+ * `forbidNonWhitelisted` ValidationPipe.
+ */
 export const RescheduleVisitRequestSchema = z.object({
   visitDate: z.string().min(1, "Visit date is required"),
   notes: z.string().max(500, "Notes must be 500 characters or fewer").optional(),
@@ -593,6 +888,20 @@ export const CancelVisitRequestSchema = z.object({
   reason: z.string().min(1, "Reason is required").max(500, "Reason must be 500 characters or fewer"),
 });
 export type CancelVisitRequest = z.infer<typeof CancelVisitRequestSchema>;
+
+/**
+ * Body for `POST /api/site-visits` -> backend `POST /site-visits`
+ * (`CreateSiteVisitDto`). `leadId`, `assignedAgentId` and `scheduledAt` are
+ * all REQUIRED upstream (`assigned_agent_id` is a NOT NULL FK).
+ */
+export const ScheduleVisitRequestSchema = z.object({
+  leadId: z.string().min(1, "Lead is required"),
+  assignedAgentId: z.string().min(1, "Select an agent"),
+  scheduledAt: z.string().min(1, "Visit date is required"),
+  projectId: z.string().min(1).optional(),
+  notes: z.string().max(2000, "Notes must be 2000 characters or fewer").optional(),
+});
+export type ScheduleVisitRequest = z.infer<typeof ScheduleVisitRequestSchema>;
 
 // --- Tenant-wide site visits (calendar) -----------------------------------
 
@@ -987,10 +1296,16 @@ export type DealersResponse = z.infer<typeof DealersResponseSchema>;
 
 export const CreateDealerRequestSchema = z.object({
   name: z.string().min(1, "Name required"),
+  // REQUIRED, not optional. Backend `CreateDealerDto.email` is `@IsEmail()
+  // @MaxLength(320)` with no `@IsOptional()`, and `dealers.email` is NOT NULL
+  // (migration 009). Sending a body without `email` 400s with
+  // "email must be an email" — which is exactly what "Add dealer" did whenever
+  // the (previously labelled "optional") email field was left blank.
   email: z
     .string()
+    .min(1, "Email required")
     .email("Enter a valid email address")
-    .optional(),
+    .max(320, "Email must be 320 characters or fewer"),
   phone: z.string().optional(),
   company: z.string().optional(),
   commissionRate: z
@@ -1843,6 +2158,24 @@ export type UpdateRoutingModeRequest = z.infer<
 export const MIN_RULE_PRIORITY = 0;
 export const MAX_RULE_PRIORITY = 10_000;
 
+/**
+ * "Any well-formed UUID" — 8-4-4-4-12 hex with NO version/variant nibble
+ * constraint. Mirrors `UUID_ANY_RE` in reos-backend/src/common/uuid.util.ts.
+ *
+ * `z.string().uuid()` enforces RFC 4122 versioning (13th hex digit 1-5, 17th
+ * 8/9/a/b). Seeded rows carry readable ids like
+ * `b0000000-0000-0000-0000-000000000001` (demo builder admin) and
+ * `d1000000-0000-0000-0000-000000000001` ("Skyline Heights") which are valid
+ * `uuid` values and valid FK targets but fail that check — so the owner /
+ * project dropdowns offered choices that could never be saved, and Save died
+ * with an opaque `validation_error`. These are server-generated primary keys,
+ * never user input, so the version nibble is not worth enforcing.
+ */
+const UUID_ANY_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const looseUuid = (message: string) => z.string().regex(UUID_ANY_RE, message);
+
 export const LeadRoutingRuleSchema = z
   .object({
     id: z.string(),
@@ -1870,8 +2203,8 @@ export type LeadRoutingRulesResponse = z.infer<
 
 export const CreateLeadRoutingRuleRequestSchema = z.object({
   source: LeadSourceSchema.nullable().optional(),
-  projectId: z.string().uuid("Select a valid project").nullable().optional(),
-  targetDealerId: z.string().uuid("Select an owner"),
+  projectId: looseUuid("Select a valid project").nullable().optional(),
+  targetDealerId: looseUuid("Select an owner"),
   priority: z
     .number()
     .int()
@@ -1892,8 +2225,8 @@ export type CreateLeadRoutingRuleRequest = z.infer<
  */
 export const UpdateLeadRoutingRuleRequestSchema = z.object({
   source: LeadSourceSchema.nullable().optional(),
-  projectId: z.string().uuid("Select a valid project").nullable().optional(),
-  targetDealerId: z.string().uuid("Select an owner").optional(),
+  projectId: looseUuid("Select a valid project").nullable().optional(),
+  targetDealerId: looseUuid("Select an owner").optional(),
   priority: z
     .number()
     .int()

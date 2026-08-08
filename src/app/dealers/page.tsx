@@ -48,9 +48,12 @@ function AddDealerModal({ onClose }: AddDealerModalProps) {
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    // `email` is required by the backend (`CreateDealerDto.email` is
+    // `@IsEmail()`, `dealers.email` is NOT NULL) — pass it through as-is so a
+    // blank value surfaces "Email required" here instead of a backend 400.
     const result = CreateDealerRequestSchema.safeParse({
       name,
-      email: email || undefined,
+      email,
       phone: phone || undefined,
     });
     if (!result.success) {

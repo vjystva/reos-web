@@ -13,9 +13,15 @@ const TYPE_LABELS: Record<string, string> = {
 
 interface ProjectCardProps {
   project: Project;
+  /**
+   * Query string (without the leading "?") appended to the "View inventory"
+   * link, so an in-progress lead→booking conversion keeps its `leadId` while
+   * the user drills into a project.
+   */
+  carryQuery?: string;
 }
 
-export function ProjectCard({ project }: ProjectCardProps) {
+export function ProjectCard({ project, carryQuery }: ProjectCardProps) {
   const typeKey = String(project.type).toLowerCase();
   const typeLabel = TYPE_LABELS[typeKey] ?? typeKey.toUpperCase();
   const location = project.city ?? project.location ?? null;
@@ -60,7 +66,7 @@ export function ProjectCard({ project }: ProjectCardProps) {
         </dl>
 
         <Link
-          href={`/dashboard/inventory/${project.id}`}
+          href={`/dashboard/inventory/${project.id}${carryQuery ? `?${carryQuery}` : ""}`}
           className="mt-auto inline-flex items-center gap-1 text-xs font-medium text-primary underline-offset-4 hover:underline"
           aria-label={`View inventory for ${project.name}`}
         >

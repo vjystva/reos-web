@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/table";
 import { ErrorBanner } from "@/components/ErrorBanner";
 import { StatusPill } from "@/components/StatusPill";
-import { paymentStatusTone } from "@/lib/bookingTone";
+import { paymentModeLabel, paymentStatusTone } from "@/lib/bookingTone";
 import { formatDate, inr } from "@/lib/utils";
 import type { Payment } from "@/types/api";
 
@@ -90,7 +90,9 @@ export function PaymentHistoryTable({
               <TableCell numeric className="font-semibold text-foreground">
                 {inr(p.amount)}
               </TableCell>
-              <TableCell className="text-foreground">{p.mode}</TableCell>
+              <TableCell className="text-foreground">
+                {paymentModeLabel(p.mode)}
+              </TableCell>
               <TableCell className="font-mono text-muted-foreground">
                 {p.referenceNumber ?? "—"}
               </TableCell>

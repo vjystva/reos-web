@@ -451,7 +451,9 @@ const DEMO_PAYMENTS: Payment[] = [
     bookingId: "bk-1",
     milestoneId: "ms-2",
     amount: 420000,
-    mode: "NEFT",
+    // Backend `PAYMENT_MODES` are lowercase — see `PAYMENT_MODES` in
+    // @/types/api. "NEFT" is not a valid wire value.
+    mode: "neft",
     referenceNumber: "NEFT-UTR-987654",
     receiptNumber: "RCP-0001-00002",
     status: "bounced",

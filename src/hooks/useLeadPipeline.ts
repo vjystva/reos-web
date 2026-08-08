@@ -86,13 +86,29 @@ export function useLeadPipeline() {
   };
 }
 
+/**
+ * `status` MUST be a canonical backend stage (`new`, `contacted`,
+ * `site_visit_scheduled`, `site_visit_done`, `negotiation`, `booking`,
+ * `lost`) — NOT one of the `PIPELINE_STATUSES` display labels above. The BFF
+ * forwards it as `toStage` to `POST /leads/:id/stage`, which validates
+ * against that exact enum.
+ */
 async function updateLeadStatus(id: string, status: string): Promise<void> {
   const res = await fetch(`/api/leads/${encodeURIComponent(id)}/status`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ status }),
   });
-  if (!res.ok) throw new Error(`update_lead_status_failed_${res.status}`);
+  if (!res.ok) {
+    // Surface the upstream reason (e.g. "lostReason is required when moving
+    // to lost") instead of an opaque status code.
+    const body: unknown = await res.json().catch(() => null);
+    const raw =
+      (body as { message?: string | string[] } | null)?.message ??
+      (body as { error?: string } | null)?.error ??
+      `update_lead_status_failed_${res.status}`;
+    throw new Error(Array.isArray(raw) ? raw.join(", ") : String(raw));
+  }
 }
 
 export function useUpdateLeadStatus() {

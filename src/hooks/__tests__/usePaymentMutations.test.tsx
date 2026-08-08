@@ -44,7 +44,13 @@ describe("useRecordPaymentMutation", () => {
 
     await act(async () => {
       await result.current.mutateAsync({
-        body: { milestoneId: "ms-1", amount: 50000, mode: "NEFT" },
+        body: {
+          bookingId: "bk-1",
+          milestoneId: "ms-1",
+          amount: 50000,
+          paymentDate: "2026-01-05",
+          paymentMode: "neft",
+        },
         scheduleId: "sched-1",
         bookingId: "bk-1",
       });
@@ -72,7 +78,13 @@ describe("useRecordPaymentMutation", () => {
     await act(async () => {
       await expect(
         result.current.mutateAsync({
-          body: { milestoneId: "ms-1", amount: 1000, mode: "cash" },
+          body: {
+            bookingId: "bk-1",
+            milestoneId: "ms-1",
+            amount: 1000,
+            paymentDate: "2026-01-05",
+            paymentMode: "cash",
+          },
           scheduleId: "sched-1",
           bookingId: "bk-1",
         }),
@@ -94,7 +106,13 @@ describe("useRecordPaymentMutation", () => {
     await act(async () => {
       await expect(
         result.current.mutateAsync({
-          body: { milestoneId: "ms-1", amount: 1000, mode: "cash" },
+          body: {
+            bookingId: "bk-1",
+            milestoneId: "ms-1",
+            amount: 1000,
+            paymentDate: "2026-01-05",
+            paymentMode: "cash",
+          },
           scheduleId: "sched-1",
           bookingId: "bk-1",
         }),

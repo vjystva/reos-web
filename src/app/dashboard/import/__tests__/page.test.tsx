@@ -14,14 +14,30 @@ const dupMutateAsync = jest.fn(async () => ({
   skipped: 0,
 }));
 
-jest.mock("@/hooks/useImportLeadsMutation", () => ({
-  useImportLeadsMutation: () => ({
-    mutate: importMutate,
-    reset: importReset,
-    isPending: false,
-    isError: false,
-    error: null,
-  }),
+/**
+ * The page moved from the leads-only `useImportLeadsMutation` to the
+ * config-driven `useImportEntityMutation` when the screen became generic.
+ * `lastImportConfig` captures which entity config the page handed the hook, so
+ * the entity-switch tests can assert the endpoint/target actually changed
+ * rather than only that the UI relabelled itself.
+ */
+let lastImportConfig: { key: string; endpoint: (ctx: unknown) => string } | null =
+  null;
+
+jest.mock("@/hooks/useImportEntityMutation", () => ({
+  useImportEntityMutation: (config: {
+    key: string;
+    endpoint: (ctx: unknown) => string;
+  }) => {
+    lastImportConfig = config;
+    return {
+      mutate: importMutate,
+      reset: importReset,
+      isPending: false,
+      isError: false,
+      error: null,
+    };
+  },
 }));
 
 jest.mock("@/hooks/useDuplicateLeadCheck", () => ({
@@ -36,6 +52,31 @@ jest.mock("@/hooks/useRoutingMode", () => ({
     isError: false,
   }),
 }));
+
+jest.mock("@/hooks/useProjects", () => ({
+  useProjects: () => ({
+    data: {
+      data: [
+        { id: "p-apartment", name: "Skyline Heights", type: "apartment" },
+        { id: "p-villa", name: "Green Valley Villas", type: "villa" },
+      ],
+      total: 2,
+    },
+    isLoading: false,
+    isError: false,
+    refetch: jest.fn(),
+  }),
+}));
+
+/** Switches the entity picker and lets the reset effects settle. */
+async function selectEntity(key: string): Promise<void> {
+  fireEvent.change(screen.getByLabelText(/import type/i), {
+    target: { value: key },
+  });
+  await act(async () => {
+    await Promise.resolve();
+  });
+}
 
 /** Lets the auto-fired duplicate probe settle inside act(). */
 async function flushAutoDuplicateCheck(): Promise<void> {
@@ -53,6 +94,7 @@ describe("Bulk CSV import page", () => {
   beforeEach(() => {
     importMutate.mockClear();
     dupMutateAsync.mockClear();
+    lastImportConfig = null;
   });
 
   test("renders the empty state with zeroed tiles and no preview", () => {
@@ -60,6 +102,9 @@ describe("Bulk CSV import page", () => {
     expect(
       screen.getByRole("heading", { name: /bulk csv import/i }),
     ).toBeInTheDocument();
+    // Leads is the default entity, so the leads-only URL keeps working.
+    expect(screen.getByLabelText(/import type/i)).toHaveValue("leads");
+    expect(lastImportConfig?.key).toBe("leads");
     expect(tile("Rows parsed")).toHaveTextContent("0");
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
     expect(screen.getByLabelText(/csv file/i)).toBeInTheDocument();
@@ -152,5 +197,133 @@ describe("Bulk CSV import page", () => {
     expect(
       screen.getByRole("button", { name: /import 1 lead$/i }),
     ).toBeEnabled();
+  });
+
+  /* -----------------------------------------------------------------------
+   * Generic shell — the same components, re-parameterised per entity.
+   * --------------------------------------------------------------------- */
+
+  test("switching entity resets the source and retargets the endpoint", async () => {
+    render(<ImportLeadsPage />);
+    fireEvent.click(screen.getByRole("button", { name: /load sample csv/i }));
+    await flushAutoDuplicateCheck();
+    expect(tile("Rows parsed")).toHaveTextContent("6");
+
+    await selectEntity("dealers");
+
+    // File, mapping and preview are all cleared.
+    expect(tile("Rows parsed")).toHaveTextContent("0");
+    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/csv text/i)).toHaveValue("");
+    expect(lastImportConfig?.key).toBe("dealers");
+    expect(lastImportConfig?.endpoint({})).toBe("/api/dealers/import");
+  });
+
+  test("dealers: sample stages rows, flags the out-of-range commission", async () => {
+    render(<ImportLeadsPage />);
+    await selectEntity("dealers");
+    fireEvent.click(screen.getByRole("button", { name: /load sample csv/i }));
+    await flushAutoDuplicateCheck();
+
+    expect(tile("Rows parsed")).toHaveTextContent("4");
+    expect(tile("Ready")).toHaveTextContent("3");
+    // Routing rules are a lead concept — no assignment tile here.
+    expect(screen.queryByLabelText(/^assignment mode:/i)).not.toBeInTheDocument();
+
+    expect(screen.getByLabelText(/^name/i)).toHaveValue("Dealer Name");
+    expect(screen.getByLabelText(/^email/i)).toHaveValue("Email Address");
+    expect(screen.getByLabelText(/commission rate/i)).toHaveValue("Commission %");
+
+    expect(
+      screen.getByText(/commission rate must be at most 100/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /^import 3 dealers$/i }),
+    ).toBeEnabled();
+  });
+
+  test("units: import is blocked until a project is chosen, tower rule follows project type", async () => {
+    render(<ImportLeadsPage />);
+    await selectEntity("units");
+    fireEvent.click(screen.getByRole("button", { name: /load sample csv/i }));
+    await flushAutoDuplicateCheck();
+
+    expect(tile("Rows parsed")).toHaveTextContent("4");
+    // No project yet -> submit is blocked even though rows parse.
+    expect(
+      screen.getByText(/select a project above before importing units/i),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^import /i })).toBeDisabled();
+
+    // Apartment project: the sample's "Tower A" rows are fine; only the
+    // non-integer bedroom row is bad.
+    fireEvent.change(screen.getByLabelText(/units are imported into a single project/i), {
+      target: { value: "p-apartment" },
+    });
+    await flushAutoDuplicateCheck();
+    expect(tile("Ready")).toHaveTextContent("3");
+    expect(screen.getByText(/bedrooms is not a number/i)).toBeInTheDocument();
+    expect(lastImportConfig?.endpoint({ projectId: "p-apartment" })).toBe(
+      "/api/projects/p-apartment/units/import",
+    );
+
+    // Villa project: towers are forbidden, so every "Tower A" row is flagged.
+    fireEvent.change(screen.getByLabelText(/units are imported into a single project/i), {
+      target: { value: "p-villa" },
+    });
+    await flushAutoDuplicateCheck();
+    expect(tile("Ready")).toHaveTextContent("0");
+    expect(
+      screen.getAllByText(/villa\/plotted projects do not use towers/i).length,
+    ).toBe(4);
+  });
+
+  test("bookings: a unit number without a project is not importable", async () => {
+    render(<ImportLeadsPage />);
+    await selectEntity("bookings");
+    fireEvent.click(screen.getByRole("button", { name: /load sample csv/i }));
+    await flushAutoDuplicateCheck();
+
+    expect(tile("Rows parsed")).toHaveTextContent("3");
+    expect(tile("Ready")).toHaveTextContent("2");
+    expect(
+      screen.getByText(/project name is required when matching by unit number/i),
+    ).toBeInTheDocument();
+    // The raw-UUID escape hatches are offered, but as a separate group.
+    expect(screen.getByText(/advanced — raw ids/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/lead id/i)).toBeInTheDocument();
+  });
+
+  test("tasks: no duplicates tile, and an unparseable due date blocks the row", async () => {
+    render(<ImportLeadsPage />);
+    await selectEntity("tasks");
+    fireEvent.click(screen.getByRole("button", { name: /load sample csv/i }));
+    await flushAutoDuplicateCheck();
+
+    expect(tile("Rows parsed")).toHaveTextContent("4");
+    expect(tile("Ready")).toHaveTextContent("3");
+    // Tasks have no natural unique key, so the tile is omitted entirely
+    // rather than showing a permanent zero.
+    expect(screen.queryByLabelText(/^duplicates:/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/due date must be an iso date/i)).toBeInTheDocument();
+    expect(lastImportConfig?.endpoint({})).toBe("/api/tasks/import");
+  });
+
+  test("submitted CSV uses the active entity's canonical headers", async () => {
+    render(<ImportLeadsPage />);
+    await selectEntity("tasks");
+    fireEvent.click(screen.getByRole("button", { name: /load sample csv/i }));
+    await flushAutoDuplicateCheck();
+
+    fireEvent.click(screen.getByRole("button", { name: /^import 3 tasks$/i }));
+
+    expect(importMutate).toHaveBeenCalledTimes(1);
+    const [vars] = importMutate.mock.calls[0] as [{ csv: string }];
+    const lines = vars.csv.split("\r\n");
+    expect(lines[0]).toBe(
+      "title,description,priority,due_date,assigned_to_email",
+    );
+    expect(lines).toHaveLength(4); // header + 3 ready rows
+    expect(vars.csv).not.toContain("next tuesday");
   });
 });

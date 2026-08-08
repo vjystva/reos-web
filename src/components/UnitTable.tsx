@@ -29,7 +29,11 @@ const COLUMNS: { key: string; label: string; numeric?: boolean }[] = [
   { key: "tower", label: "Tower" },
   { key: "floor", label: "Floor", numeric: true },
   { key: "type", label: "Type" },
-  { key: "carpet", label: "Carpet sqft", numeric: true },
+  // `units.area_sqft` is the chargeable area, not the carpet area — the old
+  // "Carpet sqft" label was a mislabel, and since backend migration 033
+  // carpet area is a distinct, optional column. The full super/carpet/balcony
+  // breakdown lives in the unit slide-over rather than widening this table.
+  { key: "area", label: "Area sqft", numeric: true },
   { key: "price", label: "Price", numeric: true },
   { key: "status", label: "Status" },
   { key: "buyer", label: "Buyer" },
@@ -120,7 +124,7 @@ export function UnitTable({
           </TableRow>
         ) : (
           units.map((u) => {
-            const carpet = u.areaSqft ?? u.area ?? null;
+            const areaSqft = u.areaSqft ?? u.area ?? null;
             const price = u.effectivePrice ?? u.listPrice ?? null;
             return (
               <TableRow
@@ -153,7 +157,7 @@ export function UnitTable({
                   {typeof u.bedrooms === "number" ? `${u.bedrooms} BHK` : "—"}
                 </TableCell>
                 <TableCell numeric className="text-foreground">
-                  {carpet != null ? carpet.toLocaleString("en-IN") : "—"}
+                  {areaSqft != null ? areaSqft.toLocaleString("en-IN") : "—"}
                 </TableCell>
                 <TableCell numeric className="font-semibold text-foreground">
                   {price != null ? inr(price) : "—"}

@@ -234,7 +234,13 @@ export default function ReportsPage() {
   /* --- data ------------------------------------------------------------ */
 
   const overviewQuery = useAnalyticsOverview();
-  const funnelQuery = useLeadsFunnel();
+  // The funnel endpoint no longer has a hard-coded 30-day window, so this
+  // page's own range selector now drives it — "All time" really means all
+  // leads. Previously the panel silently showed a 30-day cohort no matter
+  // which range was picked.
+  const funnelQuery = useLeadsFunnel(
+    fromIso ? { from: fromIso, to: toIso } : undefined,
+  );
   const bySourceQuery = useLeadsBySource(
     fromIso ? { from: fromIso, to: toIso } : undefined,
   );
@@ -471,9 +477,9 @@ export default function ReportsPage() {
 
       <p className="text-[11px] text-muted-foreground">
         Headline tiles and the partner panel are tenant-wide lifetime totals —
-        the analytics endpoints take no range or project argument. The range
-        filter drives the source mix and site-visit figures; the project filter
-        drives site visits and the lead sample.
+        those endpoints take no range or project argument. The range filter
+        drives the funnel, the source mix and the site-visit figures; the
+        project filter drives site visits and the lead sample.
       </p>
 
       {/* Panels 1 + 2 */}
@@ -483,7 +489,9 @@ export default function ReportsPage() {
           <CardHeader className="flex-row items-center justify-between space-y-0">
             <CardTitle>Funnel drop-off</CardTitle>
             <span className="text-[11px] text-muted-foreground">
-              leads created in the last 30 days
+              {range === "all"
+                ? "all leads"
+                : `leads created · ${RANGES.find((r) => r.value === range)?.label?.toLowerCase()}`}
             </span>
           </CardHeader>
           <CardContent>

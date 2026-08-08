@@ -44,10 +44,19 @@ export function scheduleCompletionPercent(
   return Math.min(100, Math.round((schedule.amountPaid / schedule.totalAmount) * 100));
 }
 
+/**
+ * `dueDate` is nullable upstream — a milestone can be triggered by
+ * `constructionTrigger` instead of a date. Undated milestones sort last
+ * rather than to the epoch.
+ */
+function dueTime(m: Milestone): number {
+  if (!m.dueDate) return Number.POSITIVE_INFINITY;
+  const t = new Date(m.dueDate).getTime();
+  return Number.isNaN(t) ? Number.POSITIVE_INFINITY : t;
+}
+
 export function sortMilestonesByDueDate(milestones: Milestone[]): Milestone[] {
-  return [...milestones].sort(
-    (a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime(),
-  );
+  return [...milestones].sort((a, b) => dueTime(a) - dueTime(b));
 }
 
 export function countOverdueMilestones(milestones: Milestone[]): number {

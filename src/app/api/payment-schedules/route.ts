@@ -45,9 +45,15 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "upstream_shape_mismatch" }, { status: 502 });
   }
 
-  // Backend may return a plain array — normalise to paginated envelope.
+  // `GET /bookings/:id/payment-schedule` returns ONE PaymentScheduleResponseDto
+  // object — a booking has at most one schedule. The UI consumes a paginated
+  // envelope (`scheduleQuery.data.data[0]`), so wrap it. Without this the
+  // envelope parse failed and the card rendered "Could not load payment
+  // schedule" on every booking that actually had one.
   if (Array.isArray(json)) {
     json = { data: json, total: (json as unknown[]).length };
+  } else if (json && typeof json === "object" && !("data" in json)) {
+    json = { data: [json], total: 1, page: 1, pageSize: 1 };
   }
 
   const parsed = PaymentSchedulesResponseSchema.safeParse(json);

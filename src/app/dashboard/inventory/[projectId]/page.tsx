@@ -49,15 +49,31 @@ const FILTER_LABEL =
 
 function ProjectSwitcher({ projectId }: { projectId: string }) {
   const router = useRouter();
+  const params = useSearchParams();
   const projectsQ = useProjects({ pageSize: 100 });
   const projects = projectsQ.data?.data ?? [];
+
+  /**
+   * Switching projects drops the unit selection and the per-project filters,
+   * but keeps the conversion context (`leadId`/`intent`) so a lead→booking
+   * flow survives a change of mind about the project.
+   */
+  function switchTo(nextProjectId: string) {
+    const next = new URLSearchParams();
+    const leadId = params.get("leadId");
+    const intent = params.get("intent");
+    if (leadId) next.set("leadId", leadId);
+    if (intent) next.set("intent", intent);
+    const qs = next.toString();
+    router.push(`/dashboard/inventory/${nextProjectId}${qs ? `?${qs}` : ""}`);
+  }
 
   return (
     <label className={FILTER_LABEL}>
       Project
       <Select
         value={projectId}
-        onChange={(e) => router.push(`/dashboard/inventory/${e.target.value}`)}
+        onChange={(e) => switchTo(e.target.value)}
         aria-label="Filter by project"
         disabled={projectsQ.isLoading || projects.length === 0}
       >
@@ -255,6 +271,8 @@ function ProjectDetailContent({ projectId }: { projectId: string }) {
   const sortBy = params.get("sortBy") ?? "";
   const priceMin = params.get("priceMin") ?? "";
   const priceMax = params.get("priceMax") ?? "";
+  /** Lead being converted, when the user came from "Convert to Booking". */
+  const conversionLeadId = params.get("leadId");
   const view: "grid" | "table" = params.get("view") === "table" ? "table" : "grid";
 
   function setView(v: "grid" | "table") {
@@ -328,7 +346,11 @@ function ProjectDetailContent({ projectId }: { projectId: string }) {
         actions={
           <>
             <Link
-              href="/dashboard/inventory"
+              href={
+                conversionLeadId
+                  ? `/dashboard/inventory?leadId=${encodeURIComponent(conversionLeadId)}&intent=book`
+                  : "/dashboard/inventory"
+              }
               className="text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
             >
               ← All projects
@@ -353,6 +375,19 @@ function ProjectDetailContent({ projectId }: { projectId: string }) {
           </>
         }
       />
+
+      {conversionLeadId ? (
+        <div className="rounded-sm border border-accent/30 bg-accent/10 px-2.5 py-2 text-xs text-foreground">
+          Booking in progress —{" "}
+          <Link
+            href={`/dashboard/leads/${encodeURIComponent(conversionLeadId)}`}
+            className="underline underline-offset-4"
+          >
+            this lead
+          </Link>{" "}
+          is pre-selected. Pick an available unit to open the booking form.
+        </div>
+      ) : null}
 
       <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
         {buckets.map((b) => (
@@ -411,6 +446,10 @@ function ProjectDetailContent({ projectId }: { projectId: string }) {
           towers={towersQ.data?.data ?? []}
           isLoading={isApartment && towersQ.isLoading}
           hidden={!isApartment}
+          projectId={projectId}
+          // Same gate as "+ Add unit": the backend restricts
+          // POST /projects/:id/towers to builder_admin.
+          canAddTower={canAddUnit}
         />
 
         <div className="min-w-0 flex-1 space-y-2">

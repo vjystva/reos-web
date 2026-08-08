@@ -6,7 +6,13 @@ import { RescheduleVisitRequestSchema } from "@/types/api";
  * POST /api/site-visits/[visitId]/reschedule
  * Body: { visitDate, notes? }
  *
- * Validates body with Zod before calling upstream.
+ * Validates body with Zod, then renames to the backend's
+ * `RescheduleSiteVisitDto` spelling: `{ newScheduledAt, note? }`.
+ *
+ * Forwarding `{ visitDate, notes }` verbatim returned 400 "property visitDate
+ * should not exist, property notes should not exist, newScheduledAt must be a
+ * valid ISO 8601 date string" (global `forbidNonWhitelisted` ValidationPipe),
+ * so the Reschedule form failed on every submit.
  */
 export async function POST(
   req: NextRequest,
@@ -29,9 +35,16 @@ export async function POST(
     );
   }
 
+  const upstreamPayload: Record<string, string> = {
+    newScheduledAt: parsed.data.visitDate,
+  };
+  // `note` is an optional non-empty string upstream; omit the key entirely
+  // rather than sending "".
+  if (parsed.data.notes) upstreamPayload.note = parsed.data.notes;
+
   const upstream = await proxyFetch(req, `/site-visits/${visitId}/reschedule`, {
     method: "POST",
-    body: JSON.stringify(parsed.data),
+    body: JSON.stringify(upstreamPayload),
     headers: { "Content-Type": "application/json" },
   });
 

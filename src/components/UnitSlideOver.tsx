@@ -59,6 +59,13 @@ export function UnitSlideOver({ unit, projectId }: UnitSlideOverProps) {
 
   const open = Boolean(unit);
   const unitId = unit?.id ?? null;
+  /**
+   * Set when the user arrived from a lead's "Convert to Booking"
+   * (`/dashboard/inventory?leadId=…`). Every inventory link rebuilds the query
+   * string from `useSearchParams()`, so the param survives the walk down to
+   * the unit and lands here to pre-select the lead in `BookingForm`.
+   */
+  const presetLeadId = params.get("leadId");
   const priceQ = useUnitPriceConfig(open ? unitId : null);
 
   const { data: currentUser } = useCurrentUser();
@@ -68,14 +75,19 @@ export function UnitSlideOver({ unit, projectId }: UnitSlideOverProps) {
     unit?.id ?? "",
   );
 
+  const unitStatus = (unit?.status ?? "").toLowerCase();
+
   // Reset step + status form when the slide-over opens for a different unit.
+  // When the user is mid-conversion for a specific lead and the unit is
+  // available, jump straight to the booking step — that is the whole point of
+  // the flow they started on the lead page.
   React.useEffect(() => {
-    setStep("detail");
+    setStep(presetLeadId && unitStatus === "available" ? "booking" : "detail");
     setCreatedBooking(null);
     setTargetStatus("");
     setNote("");
     setStatusError(null);
-  }, [unitId]);
+  }, [unitId, presetLeadId, unitStatus]);
 
   const transitions = availableTransitions(unit?.status, currentUser?.role);
   const noteRequired = targetStatus ? requiresNote(targetStatus) : false;
@@ -111,9 +123,37 @@ export function UnitSlideOver({ unit, projectId }: UnitSlideOverProps) {
     );
   }
 
-  const status = (unit.status ?? "").toLowerCase();
-  const canBook = status === "available";
-  const carpetArea = unit.areaSqft ?? unit.area ?? null;
+  const canBook = unitStatus === "available";
+  /**
+   * `area`/`areaSqft` is `units.area_sqft` — the chargeable area. It is NOT
+   * the carpet area; carpet is its own column since backend migration 033.
+   * Kept as the headline figure, with the optional breakdown below it.
+   */
+  const chargeableArea = unit.areaSqft ?? unit.area ?? null;
+
+  /**
+   * Only the figures the builder actually captured are shown. `balconyArea`
+   * of 0 is a real value ("no balcony"), so this filters on
+   * `typeof === "number"`, never on truthiness.
+   */
+  const areaBreakdown: { label: string; value: number }[] = [
+    { label: "Super area", value: unit.superArea },
+    { label: "Carpet area", value: unit.carpetArea },
+    { label: "Balcony area", value: unit.balconyArea },
+  ].flatMap((row) =>
+    typeof row.value === "number" ? [{ label: row.label, value: row.value }] : [],
+  );
+
+  function sqft(n: number) {
+    return (
+      <>
+        <span className="font-mono tabular-nums">
+          {n.toLocaleString("en-IN")}
+        </span>{" "}
+        sqft
+      </>
+    );
+  }
 
   const headerTitle =
     step === "booking"
@@ -160,19 +200,18 @@ export function UnitSlideOver({ unit, projectId }: UnitSlideOverProps) {
                   <dd className="font-mono tabular-nums text-foreground">
                     {typeof unit.bedrooms === "number" ? unit.bedrooms : "—"}
                   </dd>
-                  <dt className="text-muted-foreground">Carpet area</dt>
+                  <dt className="text-muted-foreground">Area</dt>
                   <dd className="text-foreground">
-                    {typeof carpetArea === "number" ? (
-                      <>
-                        <span className="font-mono tabular-nums">
-                          {carpetArea.toLocaleString("en-IN")}
-                        </span>{" "}
-                        sqft
-                      </>
-                    ) : (
-                      "—"
-                    )}
+                    {typeof chargeableArea === "number"
+                      ? sqft(chargeableArea)
+                      : "—"}
                   </dd>
+                  {areaBreakdown.map((row) => (
+                    <React.Fragment key={row.label}>
+                      <dt className="text-muted-foreground">{row.label}</dt>
+                      <dd className="text-foreground">{sqft(row.value)}</dd>
+                    </React.Fragment>
+                  ))}
                   <dt className="text-muted-foreground">Facing</dt>
                   <dd className="capitalize text-foreground">
                     {unit.facing ? unit.facing.replace(/_/g, " ") : "—"}
@@ -219,6 +258,7 @@ export function UnitSlideOver({ unit, projectId }: UnitSlideOverProps) {
               unitId={unit.id}
               unitNumber={unit.unitNumber ?? unit.id}
               defaultAmount={defaultAmount}
+              presetLeadId={presetLeadId}
               onCancel={() => setStep("detail")}
               onSuccess={(booking) => {
                 setCreatedBooking(booking);

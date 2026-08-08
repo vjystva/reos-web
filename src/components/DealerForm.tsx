@@ -59,11 +59,14 @@ export function DealerForm({
 
     const raw: Record<string, unknown> = {
       name: name.trim(),
+      // Always sent (even when blank) so the schema reports "Email required"
+      // inline rather than zod's generic "expected string, received undefined".
+      // The backend requires it — see CreateDealerRequestSchema.
+      email: email.trim(),
       // Always sent: the select is never empty, and 'pending' matches the DB
       // default so a create with an untouched select is a no-op.
       kycStatus,
     };
-    if (email.trim()) raw.email = email.trim();
     if (phone.trim()) raw.phone = phone.trim();
     if (company.trim()) raw.company = company.trim();
     if (commissionRate.trim()) {
@@ -112,9 +115,12 @@ export function DealerForm({
         {fieldErrors.name && <p className={FIELD_ERROR}>{fieldErrors.name}</p>}
       </div>
 
+      {/* Required — `dealers.email` is NOT NULL and CreateDealerDto declares
+          `@IsEmail()` without `@IsOptional()`. Labelling this "(optional)" is
+          what made a name-only submit 400 at the backend. */}
       <div className="space-y-1">
         <label className={LABEL} htmlFor="dealer-email">
-          Email <span className={OPTIONAL}>(optional)</span>
+          Email
         </label>
         <Input
           id="dealer-email"
@@ -122,6 +128,7 @@ export function DealerForm({
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           placeholder="contact@acme.example"
+          required
         />
         {fieldErrors.email && <p className={FIELD_ERROR}>{fieldErrors.email}</p>}
       </div>

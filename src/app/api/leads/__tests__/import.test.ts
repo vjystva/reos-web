@@ -1,4 +1,14 @@
 import { NextRequest } from "next/server";
+
+// proxyFetch()'s 401 path writes cookies via next/headers' cookies(), which
+// only works inside a real Next.js request context — not when a route
+// handler is invoked directly like this. Mock it so the terminal-failure
+// branch (exercised below) doesn't throw "cookies was called outside a
+// request scope".
+jest.mock("next/headers", () => ({
+  cookies: () => ({ set: jest.fn(), get: jest.fn(), delete: jest.fn() }),
+}));
+
 import { POST } from "@/app/api/leads/import/route";
 
 const CSV = "first_name,last_name,phone\nRahul,Sharma,9876543210";

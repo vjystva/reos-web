@@ -1,10 +1,42 @@
 import { NextRequest, NextResponse } from "next/server";
 import { proxyFetch } from "@/lib/api";
+import { normalizeReportJob, normalizeReportJobs } from "@/lib/reportJob";
 import {
   GenerateReportRequestSchema,
   ReportJobSchema,
   ReportJobsResponseSchema,
 } from "@/types/api";
+
+/**
+ * Translate the client's flat generate-report body into the backend's
+ * `CreateReportDto` ({ reportType, format, filters? }).
+ *
+ * The backend runs a global `ValidationPipe({ forbidNonWhitelisted: true })`,
+ * so forwarding `dateFrom` / `dateTo` / `projectId` at the top level 400s the
+ * whole request with "property dateFrom should not exist" — which is exactly
+ * what happened every time a user picked a date on the Generate report form.
+ * Those three are report *filters*; `filters` is the field the DTO accepts
+ * (it lands in `report_jobs.filters`/`parameters`).
+ */
+function toCreateReportDto(body: {
+  reportType: string;
+  format: string;
+  dateFrom?: string;
+  dateTo?: string;
+  projectId?: string;
+}): Record<string, unknown> {
+  const filters: Record<string, string> = {};
+  if (body.dateFrom) filters.dateFrom = body.dateFrom;
+  if (body.dateTo) filters.dateTo = body.dateTo;
+  if (body.projectId) filters.projectId = body.projectId;
+
+  const dto: Record<string, unknown> = {
+    reportType: body.reportType,
+    format: body.format,
+  };
+  if (Object.keys(filters).length > 0) dto.filters = filters;
+  return dto;
+}
 
 /**
  * GET /api/reports — list report jobs.
@@ -40,11 +72,37 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     );
   }
 
-  // Normalize: bare array → { jobs: [] }, object → pass through
+  // Backend `GET /reports` answers with a bare array of `report_jobs` rows
+  // keyed on `id`. Rename to `jobId` and strip the nulls the client schema
+  // rejects, otherwise every row fails `ReportJobsResponseSchema` and
+  // `useReportJobs` silently falls back to an empty list.
   if (Array.isArray(json)) {
-    json = { jobs: json };
+    json = { jobs: normalizeReportJobs(json) };
+  } else if (
+    json &&
+    typeof json === "object" &&
+    Array.isArray((json as { jobs?: unknown }).jobs)
+  ) {
+    json = {
+      ...(json as object),
+      jobs: normalizeReportJobs((json as { jobs: unknown[] }).jobs),
+    };
+  } else if (
+    json &&
+    typeof json === "object" &&
+    Array.isArray((json as { data?: unknown }).data)
+  ) {
+    json = { jobs: normalizeReportJobs((json as { data: unknown[] }).data) };
   }
-  return NextResponse.json(json, { status: 200 });
+
+  const parsedJobs = ReportJobsResponseSchema.safeParse(json);
+  if (!parsedJobs.success) {
+    return NextResponse.json(
+      { error: "upstream_shape_mismatch" },
+      { status: 502 },
+    );
+  }
+  return NextResponse.json(parsedJobs.data, { status: 200 });
 }
 
 /**
@@ -70,7 +128,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const upstream = await proxyFetch(req, "/reports", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(parsedBody.data),
+    body: JSON.stringify(toCreateReportDto(parsedBody.data)),
   });
 
   if (upstream.status === 401) {
@@ -96,6 +154,13 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       { status: 502 },
     );
   }
-  // Return the upstream response as-is (backend shape varies by endpoint version).
-  return NextResponse.json(json, { status: 201 });
+  // Same `id` → `jobId` rename as the list route, so the mutation's resolved
+  // value is a real `ReportJob` the caller can poll on.
+  const created = ReportJobSchema.safeParse(normalizeReportJob(json));
+  if (!created.success) {
+    // Non-fatal: the job WAS queued upstream. Hand back the raw row rather
+    // than failing a successful write on a cosmetic shape difference.
+    return NextResponse.json(json, { status: 201 });
+  }
+  return NextResponse.json(created.data, { status: 201 });
 }

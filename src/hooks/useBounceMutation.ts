@@ -6,10 +6,17 @@ interface BounceVars {
   bookingId: string;
 }
 
+/**
+ * The BFF rewrites this to
+ * `PATCH /bookings/:bookingId/payments/:paymentId/status { toStatus: 'bounced' }`
+ * — the only bounce capability the backend exposes. `bookingId` therefore has
+ * to travel in the body; without it the route cannot build the upstream URL.
+ */
 async function bouncePayment(vars: BounceVars): Promise<void> {
   const res = await fetch(`/api/payments/${encodeURIComponent(vars.paymentId)}/bounce`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ bookingId: vars.bookingId }),
   });
   if (res.status === 401) {
     window.location.href = "/login";

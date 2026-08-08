@@ -5,6 +5,12 @@ import { CancelVisitRequestSchema } from "@/types/api";
 /**
  * POST /api/site-visits/[visitId]/cancel
  * Body: { reason }
+ *
+ * The browser sends `{ reason }`; the backend's `CancelSiteVisitDto` requires
+ * `{ cancellationReason }`. Forwarding `reason` verbatim returned
+ * 400 "property reason should not exist, cancellationReason should not be
+ * empty" (global `forbidNonWhitelisted` ValidationPipe), so the Cancel visit
+ * form failed on every submit. Rename here — the UI keeps its own vocabulary.
  */
 export async function POST(
   req: NextRequest,
@@ -29,7 +35,7 @@ export async function POST(
 
   const upstream = await proxyFetch(req, `/site-visits/${visitId}/cancel`, {
     method: "POST",
-    body: JSON.stringify(parsed.data),
+    body: JSON.stringify({ cancellationReason: parsed.data.reason }),
     headers: { "Content-Type": "application/json" },
   });
 

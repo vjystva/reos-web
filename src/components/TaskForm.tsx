@@ -5,7 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { ErrorBanner } from "@/components/ErrorBanner";
-import { ownerLabel, type TaskOwnerOption } from "@/lib/taskBoard";
+import { OwnerCombobox } from "@/components/OwnerCombobox";
+import { taskOwnerOptions, type TaskOwnerOption } from "@/lib/taskBoard";
 import {
   CreateTaskRequestSchema,
   TASK_PRIORITIES,
@@ -76,6 +77,13 @@ export function TaskForm({
   );
   const [resourceId, setResourceId] = React.useState(initial?.resourceId ?? "");
   const [fieldErrors, setFieldErrors] = React.useState<FieldErrors>({});
+
+  // Only roles that can sensibly own a follow-up, sorted by display name, with
+  // the already-assigned owner retained even if it fails the role filter.
+  const ownerOptions = React.useMemo(
+    () => taskOwnerOptions(users ?? [], assignedTo),
+    [users, assignedTo],
+  );
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -173,23 +181,15 @@ export function TaskForm({
           <label className={LABEL} htmlFor="task-assigned-to">
             Owner
           </label>
-          {users && users.length > 0 ? (
-            <Select
+          {ownerOptions.length > 0 ? (
+            <OwnerCombobox
               id="task-assigned-to"
+              users={ownerOptions}
               value={assignedTo}
-              onChange={(e) => setAssignedTo(e.target.value)}
+              onChange={setAssignedTo}
+              placeholder="Search owners by name…"
               required
-            >
-              <option value="">Select an owner…</option>
-              {users.map((u) => (
-                <option key={u.id} value={u.id}>
-                  {ownerLabel(u)}
-                </option>
-              ))}
-              {assignedTo && !users.some((u) => u.id === assignedTo) ? (
-                <option value={assignedTo}>{assignedTo}</option>
-              ) : null}
-            </Select>
+            />
           ) : (
             <Input
               id="task-assigned-to"
