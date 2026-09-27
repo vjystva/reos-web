@@ -10,6 +10,7 @@ import { MetricCard } from "@/components/MetricCard";
 import { StatusPill } from "@/components/StatusPill";
 import { Select } from "@/components/ui/select";
 import { Progress } from "@/components/ui/progress";
+import { RequestDiscountButton } from "@/components/RequestDiscountButton";
 import {
   Table,
   TableBody,
@@ -65,6 +66,8 @@ interface BookingRow {
   unit: string | null;
   project: string | null;
   value: number | null;
+  /** Approved discount %, set only by an approved `discount_request`. */
+  discountPercent: number | null;
   collected: number | null;
   bookedOn: string | null;
   owner: string | null;
@@ -132,6 +135,10 @@ function toRow(b: Booking): BookingRow {
       (pick(raw, ["bookingNumber", "bookingRef", "booking_number"]) as string) ??
       b.id.slice(0, 8),
     status: (raw.status as string) ?? "draft",
+    // `discountPercent` is only present on a backend carrying migration 037;
+    // `toAmount` yields null for an absent/NULL column, which renders as no
+    // discount rather than "0%".
+    discountPercent: toAmount(pick(raw, ["discountPercent", "discount_percent"])),
     buyer:
       name(pick(raw, ["lead", "customer", "buyer", "primaryApplicant"])) ??
       name(pick(raw, ["customerName", "buyerName", "leadName"])),
@@ -452,6 +459,14 @@ export default function BookingsPage() {
                   </TableCell>
                   <TableCell numeric className="text-foreground">
                     {b.value != null ? inr(b.value) : "—"}
+                    {b.discountPercent != null ? (
+                      <span
+                        className="ml-1 text-[11px] text-accent-foreground"
+                        title="Approved discount"
+                      >
+                        −{b.discountPercent}%
+                      </span>
+                    ) : null}
                   </TableCell>
                   <TableCell className="min-w-[7.5rem]">
                     {pct != null ? (
@@ -501,6 +516,15 @@ export default function BookingsPage() {
                       >
                         Visits
                       </Link>
+                      {/*
+                        Raises a `discount_request` approval for this booking.
+                        Approval is what actually writes `discountPercent` onto
+                        the booking — nothing else in the app can set it.
+                      */}
+                      <RequestDiscountButton
+                        bookingId={b.id}
+                        bookingNumber={b.number}
+                      />
                     </div>
                   </TableCell>
                 </TableRow>

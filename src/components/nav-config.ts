@@ -7,6 +7,7 @@ import {
   LayoutDashboard,
   ListChecks,
   Settings,
+  ShieldCheck,
   Upload,
   UserPlus,
   Users,
@@ -66,6 +67,18 @@ export const NAV_GROUPS: readonly NavGroup[] = [
       { href: "/dashboard/inventory", label: "Inventory", icon: Building2, roles: ["builder_admin", "sales_manager", "sales_agent", "dealer"] },
       { href: "/dashboard/site-visits", label: "Site Visits", icon: CalendarDays, roles: ["builder_admin", "sales_manager", "sales_agent"] },
       { href: "/dashboard/tasks", label: "Tasks", icon: CheckSquare, roles: ["builder_admin", "sales_manager", "sales_agent"] },
+      /*
+        Sits next to Bookings because that is where its two subjects live: a
+        discount request is raised from the bookings table, a hold extension
+        from a held unit.
+
+        `sales_agent` IS included even though an agent cannot approve anything:
+        `GET /approvals` returns an agent only the requests they raised, so the
+        page is their "where did my request get to" view. The Approve/Reject
+        buttons are role-gated inside the page (`canResolveApprovals`) and the
+        backend re-checks both the role and self-approval.
+      */
+      { href: "/dashboard/approvals", label: "Approvals", icon: ShieldCheck, roles: ["builder_admin", "sales_manager", "sales_agent", "admin"] },
     ],
   },
   {

@@ -85,15 +85,45 @@ export function achievementPct(
   return Math.round((achieved / target) * 100);
 }
 
-/** "priya.shah@acme.in" → "priya.shah" — users have no display-name field. */
+/**
+ * "priya.shah@acme.in" → "priya.shah".
+ *
+ * Fallback only. Since backend migration 035 `users.name` carries a real
+ * display name; this derivation is what we show when it is NULL (every row
+ * predating 035, and anyone created without a name). Kept exported and
+ * unchanged in signature — other callers pass a bare email.
+ */
 export function repLabel(email: string): string {
   const local = email.split("@")[0] ?? email;
   return local || email;
 }
 
+/**
+ * The name to show for a team member: `users.name` when set, else the email
+ * local-part.
+ *
+ * Centralised here rather than at render time so the sort in `buildRepRows`
+ * orders by the string the user actually sees, and neither the team roster nor
+ * the reports panel needs a second lookup.
+ */
+export function repDisplayName(user: {
+  name?: string | null;
+  email: string;
+}): string {
+  const trimmed = user.name?.trim();
+  return trimmed && trimmed.length > 0 ? trimmed : repLabel(user.email);
+}
+
 export interface RepRow {
   userId: string;
   email: string;
+  /**
+   * `users.name` verbatim, or `null` when none is on record. Carried through
+   * separately from `label` so an edit form can pre-fill the stored value
+   * rather than the email-derived fallback.
+   */
+  name: string | null;
+  /** What to display: `name` when set, else the email local-part. */
   label: string;
   role: string;
   isActive: boolean;
@@ -157,10 +187,12 @@ export function buildRepRows({
     const agg = targetsByAssignee.get(u.id);
     const targetRevenue = agg?.target ?? 0;
     const achievedRevenue = agg?.achieved ?? 0;
+    const name = u.name?.trim() ? u.name.trim() : null;
     return {
       userId: u.id,
       email: u.email,
-      label: repLabel(u.email),
+      name,
+      label: repDisplayName(u),
       role: u.role,
       isActive: u.isActive !== false,
       siteVisits: visitsByAgent.get(u.id) ?? 0,

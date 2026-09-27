@@ -39,7 +39,12 @@ export const TASK_STATUS_LABEL: Record<TaskStatus, string> = {
 export interface TaskOwnerOption {
   id: string;
   email: string;
-  name?: string;
+  /**
+   * `users.name` (backend migration 035). `null` is the on-the-wire value for
+   * "no name on record", so this must accept null as well as absent — the
+   * `TeamUser` payload now always carries the key.
+   */
+  name?: string | null;
   /** `users.role` — absent when a caller builds options by hand. */
   role?: string;
 }
@@ -70,10 +75,9 @@ export function isTaskOwnerRole(role: string | null | undefined): boolean {
 /**
  * Human label for an owner.
  *
- * `users` has no `name` column (only `email`), so the display name is derived
- * from the email local-part with the same `userLabel` helper the sidebar uses:
- * `asha.rao@demo.com` → `Asha Rao`. An explicit `name` always wins if a future
- * payload supplies one.
+ * An explicit `users.name` (migration 035) always wins. When it is NULL/absent
+ * the display name is derived from the email local-part with the same
+ * `userLabel` helper the sidebar uses: `asha.rao@demo.com` → `Asha Rao`.
  */
 export function ownerLabel(u: TaskOwnerOption): string {
   const explicit = u.name?.trim();

@@ -7,11 +7,13 @@ import { LeadsFunnelChart } from "@/components/LeadsFunnelChart";
 import { RevenueTrendChart } from "@/components/RevenueTrendChart";
 import { BookingsByProjectChart } from "@/components/BookingsByProjectChart";
 import { TopDealersTable } from "@/components/TopDealersTable";
+import { CollectionsAgingReport } from "@/components/CollectionsAgingReport";
 import { useAnalyticsOverview } from "@/hooks/useAnalyticsOverview";
 import { useLeadsFunnel } from "@/hooks/useLeadsFunnel";
 import { useRevenueTrend } from "@/hooks/useRevenueTrend";
 import { useBookingsByProject } from "@/hooks/useBookingsByProject";
 import { useTopDealers } from "@/hooks/useTopDealers";
+import { useCollectionsAging } from "@/hooks/useCollectionsAging";
 import { formatCurrency } from "@/lib/formatCurrency";
 
 export default function AnalyticsPage() {
@@ -20,6 +22,7 @@ export default function AnalyticsPage() {
   const trendQuery = useRevenueTrend();
   const bookingsByProjectQuery = useBookingsByProject();
   const topDealersQuery = useTopDealers();
+  const collectionsAgingQuery = useCollectionsAging();
 
   const ov = overviewQuery.data;
 
@@ -142,6 +145,23 @@ export default function AnalyticsPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Collections aging — how overdue the outstanding receivables are.
+          Full width rather than sharing the 2-col grid above: it carries a
+          4-bucket summary AND a 6-column detail table. */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Collections Aging</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <CollectionsAgingReport
+            data={collectionsAgingQuery.data}
+            isLoading={collectionsAgingQuery.isLoading}
+            isError={collectionsAgingQuery.isError}
+            onRetry={() => void collectionsAgingQuery.refetch()}
+          />
+        </CardContent>
+      </Card>
 
       {/* Pending site visits */}
       {ov?.pendingSiteVisits != null && (

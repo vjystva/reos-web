@@ -21,6 +21,8 @@ import {
 } from "@/components/ui/table";
 import { GenerateReportForm } from "@/components/GenerateReportForm";
 import { ReportJobsList } from "@/components/ReportJobsList";
+import { CollectionsAgingReport } from "@/components/CollectionsAgingReport";
+import { useCollectionsAging } from "@/hooks/useCollectionsAging";
 import { useAnalyticsOverview } from "@/hooks/useAnalyticsOverview";
 import { useLeadsFunnel } from "@/hooks/useLeadsFunnel";
 import { useLeadsBySource } from "@/hooks/useLeadsBySource";
@@ -268,6 +270,8 @@ export default function ReportsPage() {
     order: "desc",
   });
   const commissionsQuery = useCommissions();
+  // Intentionally NOT range-scoped — see the Collections aging panel comment.
+  const collectionsAgingQuery = useCollectionsAging();
 
   /* --- derived --------------------------------------------------------- */
 
@@ -789,6 +793,32 @@ export default function ReportsPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Panel 5 — collections aging.
+          Full width: a 4-bucket summary plus a 6-column detail table does not
+          fit the 2-col grid used above.
+
+          NOT wired to the `range` selector on purpose. Aging is a current-state
+          question ("how overdue is the money we are owed right now"), computed
+          against CURRENT_DATE server-side — the same reasoning that removed the
+          hard-coded 30-day window from the leads funnel. Filtering it by a
+          created_at cohort would silently hide the oldest, most urgent
+          receivables, which is the exact opposite of the point. */}
+      <section aria-label="Collections aging">
+        <Card>
+          <CardHeader>
+            <CardTitle>Collections aging</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <CollectionsAgingReport
+              data={collectionsAgingQuery.data}
+              isLoading={collectionsAgingQuery.isLoading}
+              isError={collectionsAgingQuery.isError}
+              onRetry={() => void collectionsAgingQuery.refetch()}
+            />
+          </CardContent>
+        </Card>
+      </section>
 
       {/* Report generation + exports (pre-existing functionality) */}
       <div className="grid gap-3 lg:grid-cols-2">

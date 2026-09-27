@@ -4,6 +4,15 @@ import { z } from "zod";
 
 const CreateUserBodySchema = z.object({
   email: z.string().email("Enter a valid email"),
+  // Optional display name. Blank collapses to "omitted" so we never forward
+  // `name: ""` — the backend would store it as NULL regardless, and its
+  // ValidationPipe runs `forbidNonWhitelisted`, so only declared keys may go up.
+  name: z
+    .string()
+    .trim()
+    .max(200)
+    .optional()
+    .transform((v) => (v === "" ? undefined : v)),
   password: z.string().min(8, "Password must be at least 8 characters"),
   role: z.enum(["sales_manager", "sales_agent", "dealer"]),
 });
@@ -11,6 +20,9 @@ const CreateUserBodySchema = z.object({
 const UserSchema = z.object({
   id: z.string(),
   email: z.string(),
+  // `.nullish()`: backend sends `null` for "no name on record", and a
+  // pre-migration-035 backend omits the key entirely.
+  name: z.string().nullish(),
   role: z.string(),
   isActive: z.boolean().optional(),
   tenantId: z.string().optional(),

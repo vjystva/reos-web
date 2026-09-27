@@ -2073,6 +2073,13 @@ export type UserRole = typeof USER_ROLES[number];
 export const TeamUserSchema = z.object({
   id: z.string(),
   email: z.string(),
+  /**
+   * Display name (backend migration 035). `null` means no name on record —
+   * consumers fall back to the email local-part (`repLabel()` in
+   * src/lib/salesPerformance.ts). `.nullish()` rather than `.nullable()`
+   * because a backend older than 035 omits the key entirely.
+   */
+  name: z.string().nullish(),
   role: z.string(),
   isActive: z.boolean().optional(),
   tenantId: z.string().optional(),
@@ -2088,10 +2095,42 @@ export type UsersResponse = z.infer<typeof UsersResponseSchema>;
 
 export const CreateUserRequestSchema = z.object({
   email: z.string().email("Enter a valid email"),
+  /**
+   * Optional. Blank is normalised away rather than sent as "" — the backend
+   * stores blank as SQL NULL anyway, and omitting the key keeps the wire body
+   * honest about "no name given".
+   */
+  name: z
+    .string()
+    .trim()
+    .max(200, "Name must be 200 characters or fewer")
+    .optional()
+    .transform((v) => (v === "" ? undefined : v)),
   password: z.string().min(8, "Password must be at least 8 characters"),
   role: z.enum(USER_ROLES),
 });
 export type CreateUserRequest = z.infer<typeof CreateUserRequestSchema>;
+
+/**
+ * PATCH /api/users/:id body — partial update of a roster member.
+ *
+ * Every key is optional: an absent key leaves the column alone. `name: ""` is
+ * meaningful here (it clears the name back to NULL server-side), so unlike
+ * CreateUserRequestSchema it is NOT transformed away.
+ *
+ * `email` and `password` are intentionally not updatable — the backend endpoint
+ * does not accept them.
+ */
+export const UpdateUserRequestSchema = z.object({
+  name: z
+    .string()
+    .trim()
+    .max(200, "Name must be 200 characters or fewer")
+    .optional(),
+  role: z.enum(USER_ROLES).optional(),
+  isActive: z.boolean().optional(),
+});
+export type UpdateUserRequest = z.infer<typeof UpdateUserRequestSchema>;
 
 // --- Internal AI assistant (Phase 2) --------------------------------------
 // Client-facing shapes for the /api/assistant/chat BFF route. The user's JWT
@@ -2271,3 +2310,262 @@ export const ImportCsvResultSchema = z.object({
   rejected: z.array(ImportCsvRejectionSchema),
 });
 export type ImportCsvResult = z.infer<typeof ImportCsvResultSchema>;
+
+// --- Collections aging ----------------------------------------------------
+// Mirrors reos-backend/src/analytics/dto/analytics-response.dto.ts
+// (CollectionsAgingDto), returned by GET /analytics/collections-aging.
+//
+// The bucket labels are a wire contract shared with the backend's
+// COLLECTIONS_AGING_BUCKETS constant — the chart keys off these exact strings.
+// Boundaries (days overdue): '<30' = 1..29, '30-60' = 30..60, '60-90' = 61..90,
+// '>90' = 91+. The backend always returns all four, zero-filled and in order,
+// so the chart has a stable x-axis.
+
+export const COLLECTIONS_AGING_BUCKETS = [
+  "<30",
+  "30-60",
+  "60-90",
+  ">90",
+] as const;
+
+export const CollectionsAgingBucketNameSchema = z.enum(
+  COLLECTIONS_AGING_BUCKETS,
+);
+export type CollectionsAgingBucketName = z.infer<
+  typeof CollectionsAgingBucketNameSchema
+>;
+
+export const CollectionsAgingBucketSchema = z.object({
+  bucket: CollectionsAgingBucketNameSchema,
+  count: z.number().int().nonnegative(),
+  totalOutstanding: z.number(),
+});
+export type CollectionsAgingBucket = z.infer<
+  typeof CollectionsAgingBucketSchema
+>;
+
+/**
+ * One overdue milestone. Every joined field is nullable — the backend uses LEFT
+ * joins so a milestone with missing booking/unit context still contributes its
+ * outstanding amount to the totals rather than vanishing from the report.
+ */
+export const CollectionsAgingItemSchema = z.object({
+  milestoneId: z.string(),
+  milestoneName: z.string(),
+  status: z.string(),
+  bookingId: z.string().nullable(),
+  bookingNumber: z.string().nullable(),
+  bookingStatus: z.string().nullable(),
+  unitId: z.string().nullable(),
+  unitNumber: z.string().nullable(),
+  projectId: z.string().nullable(),
+  projectName: z.string().nullable(),
+  customerName: z.string().nullable(),
+  dueDate: z.string(),
+  daysOverdue: z.number().int(),
+  outstanding: z.number(),
+  bucket: CollectionsAgingBucketNameSchema,
+});
+export type CollectionsAgingItem = z.infer<typeof CollectionsAgingItemSchema>;
+
+export const CollectionsAgingResponseSchema = z.object({
+  buckets: z.array(CollectionsAgingBucketSchema),
+  items: z.array(CollectionsAgingItemSchema),
+  /** Across all buckets — NOT `items.length`, which the server caps. */
+  totalCount: z.number().int().nonnegative(),
+  totalOutstanding: z.number(),
+  /** The date the aging was computed against (YYYY-MM-DD). */
+  asOf: z.string(),
+});
+export type CollectionsAgingResponse = z.infer<
+  typeof CollectionsAgingResponseSchema
+>;
+
+// --- Bulk operations ------------------------------------------------------
+
+/**
+ * Mirrors the backend `BulkResultDto` (`reos-backend/src/bulk/dto/
+ * bulk-result.dto.ts`). Bulk endpoints answer 200 even when individual items
+ * fail — `failed > 0` with per-item `error` strings is a normal response, not
+ * an HTTP error, so callers MUST read `results` rather than just `res.ok`.
+ */
+export const BulkItemResultSchema = z.object({
+  id: z.string(),
+  success: z.boolean(),
+  error: z.string().optional(),
+});
+export type BulkItemResult = z.infer<typeof BulkItemResultSchema>;
+
+export const BulkResultSchema = z.object({
+  processed: z.number().int().nonnegative(),
+  succeeded: z.number().int().nonnegative(),
+  failed: z.number().int().nonnegative(),
+  results: z.array(BulkItemResultSchema),
+});
+export type BulkResult = z.infer<typeof BulkResultSchema>;
+
+/**
+ * Mirrors the backend `BulkUnitStatusDto` — `POST /bulk/units/status`.
+ * Capped at 100 items server-side (`MAX_ITEMS`); the cap is duplicated here so
+ * an oversized batch fails in the BFF instead of costing a round trip.
+ *
+ * `id` is `z.string().min(1)` and not `z.string().uuid()`: seeded rows carry
+ * readable non-RFC-4122 ids that zod's strict uuid regex rejects even though
+ * Postgres accepts them (see the same note on `CreateUnitRequestSchema`).
+ */
+export const BulkUnitStatusItemSchema = z.object({
+  id: z.string().min(1),
+  status: UnitStatusSchema,
+  note: z.string().min(1).max(1000).optional(),
+});
+export type BulkUnitStatusItem = z.infer<typeof BulkUnitStatusItemSchema>;
+
+export const BulkUnitStatusRequestSchema = z.object({
+  items: z.array(BulkUnitStatusItemSchema).min(1).max(100),
+});
+export type BulkUnitStatusRequest = z.infer<typeof BulkUnitStatusRequestSchema>;
+
+// --- Approvals -------------------------------------------------------------
+// Mirrors reos-backend/src/approvals (migrations 036 + 037). One
+// type-discriminated queue: `payload` carries the per-type request detail and
+// an approval applies a real side effect (booking discount / hold expiry).
+
+export const APPROVAL_TYPES = ["discount_request", "hold_extension"] as const;
+export const ApprovalTypeSchema = z.enum(APPROVAL_TYPES);
+export type ApprovalType = z.infer<typeof ApprovalTypeSchema>;
+
+export const APPROVAL_STATUSES = ["pending", "approved", "rejected"] as const;
+export const ApprovalStatusSchema = z.enum(APPROVAL_STATUSES);
+export type ApprovalStatus = z.infer<typeof ApprovalStatusSchema>;
+
+/**
+ * Discount threshold, duplicated from the backend's
+ * `DISCOUNT_APPROVAL_THRESHOLD_PERCENT`. `POST /approvals` answers 400 for
+ * anything at or below it ("does not require approval"), so the form rejects it
+ * client-side rather than spending a round trip on a known failure.
+ */
+export const DISCOUNT_APPROVAL_THRESHOLD_PERCENT = 2;
+
+export const DiscountRequestPayloadSchema = z
+  .object({
+    bookingId: z.string(),
+    requestedDiscountPercent: z.number(),
+    reason: z.string().nullish(),
+  })
+  .passthrough();
+
+export const HoldExtensionPayloadSchema = z
+  .object({
+    holdId: z.string(),
+    additionalMinutes: z.number(),
+    reason: z.string().nullish(),
+  })
+  .passthrough();
+
+/**
+ * `payload` is validated loosely (a record) rather than as a discriminated
+ * union: zod cannot key a union off a SIBLING field, and a queue row whose
+ * payload shape drifted should still render as a row rather than blanking the
+ * entire page through a 502. Consumers narrow with
+ * `DiscountRequestPayloadSchema` / `HoldExtensionPayloadSchema`.
+ */
+export const ApprovalSchema = z
+  .object({
+    id: z.string(),
+    tenantId: z.string().optional(),
+    type: ApprovalTypeSchema,
+    status: ApprovalStatusSchema,
+    requestedBy: z.string(),
+    payload: z.record(z.string(), z.unknown()),
+    resolvedBy: z.string().nullish(),
+    resolvedAt: z.string().nullish(),
+    resolutionNote: z.string().nullish(),
+    createdAt: z.string().optional(),
+    updatedAt: z.string().optional(),
+  })
+  .passthrough();
+export type Approval = z.infer<typeof ApprovalSchema>;
+
+export const ApprovalsResponseSchema = z.array(ApprovalSchema);
+export type ApprovalsResponse = z.infer<typeof ApprovalsResponseSchema>;
+
+/**
+ * `PATCH /approvals/:id/approve` echoes what the approval actually DID
+ * (`effect`) next to the stamped row — `null` for a rejection, which by design
+ * changes nothing but the approval itself.
+ */
+export const ApprovalEffectSchema = z.union([
+  z
+    .object({
+      kind: z.literal("booking_discount"),
+      bookingId: z.string(),
+      discountPercent: z.string(),
+      discountApprovedBy: z.string().nullish(),
+      discountApprovedAt: z.string().nullish(),
+    })
+    .passthrough(),
+  z
+    .object({
+      kind: z.literal("hold_extension"),
+      holdId: z.string(),
+      additionalMinutes: z.number(),
+      expiresAt: z.string(),
+    })
+    .passthrough(),
+]);
+export type ApprovalEffect = z.infer<typeof ApprovalEffectSchema>;
+
+export const ResolvedApprovalSchema = ApprovalSchema.extend({
+  effect: ApprovalEffectSchema.nullish(),
+});
+export type ResolvedApproval = z.infer<typeof ResolvedApprovalSchema>;
+
+export const CreateDiscountApprovalRequestSchema = z.object({
+  type: z.literal("discount_request"),
+  payload: z.object({
+    bookingId: looseUuid("Select a valid booking"),
+    requestedDiscountPercent: z
+      .number({ error: "Enter a discount percentage" })
+      .gt(
+        DISCOUNT_APPROVAL_THRESHOLD_PERCENT,
+        `Discounts of ${DISCOUNT_APPROVAL_THRESHOLD_PERCENT}% or less do not need approval`,
+      )
+      .max(100, "A discount cannot exceed 100%"),
+    reason: z.string().max(2000).optional(),
+  }),
+});
+
+/** 30 days, matching the backend's MAX_HOLD_EXTENSION_MINUTES. */
+export const MAX_HOLD_EXTENSION_MINUTES = 60 * 24 * 30;
+
+export const CreateHoldExtensionApprovalRequestSchema = z.object({
+  type: z.literal("hold_extension"),
+  payload: z.object({
+    holdId: looseUuid("Select a valid hold"),
+    additionalMinutes: z
+      .number({ error: "Enter the extra minutes" })
+      .int("Minutes must be a whole number")
+      .min(1, "Extend by at least 1 minute")
+      .max(
+        MAX_HOLD_EXTENSION_MINUTES,
+        `Extend by at most ${MAX_HOLD_EXTENSION_MINUTES} minutes`,
+      ),
+    reason: z.string().max(2000).optional(),
+  }),
+});
+
+export const CreateApprovalRequestSchema = z.discriminatedUnion("type", [
+  CreateDiscountApprovalRequestSchema,
+  CreateHoldExtensionApprovalRequestSchema,
+]);
+export type CreateApprovalRequest = z.infer<typeof CreateApprovalRequestSchema>;
+
+export const ResolveApprovalRequestSchema = z.object({
+  resolutionNote: z
+    .string()
+    .max(2000, "Note must be 2000 characters or fewer")
+    .optional(),
+});
+export type ResolveApprovalRequest = z.infer<
+  typeof ResolveApprovalRequestSchema
+>;

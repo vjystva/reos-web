@@ -11,6 +11,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Checkbox } from "@/components/ui/checkbox";
 import { UnitStatusBadge } from "@/components/UnitStatusBadge";
 import { inr } from "@/lib/utils";
 import type { Tower, Unit } from "@/types/api";
@@ -21,6 +22,15 @@ interface UnitTableProps {
   towers?: Tower[];
   projectName?: string | null;
   isLoading: boolean;
+  /**
+   * Row selection for bulk actions. Omit all three to get the plain read-only
+   * table (the grid view, the dealer/read-only surfaces) — the checkbox column
+   * only renders when `selectedIds` is supplied.
+   */
+  selectedIds?: ReadonlySet<string>;
+  onToggleOne?: (id: string, checked: boolean) => void;
+  /** `ids` are the rows currently rendered, i.e. "select all" is filter-scoped. */
+  onToggleAll?: (ids: string[], checked: boolean) => void;
 }
 
 const COLUMNS: { key: string; label: string; numeric?: boolean }[] = [
@@ -74,10 +84,22 @@ export function UnitTable({
   towers,
   projectName,
   isLoading,
+  selectedIds,
+  onToggleOne,
+  onToggleAll,
 }: UnitTableProps) {
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
+
+  const selectable = Boolean(selectedIds);
+  const colCount = COLUMNS.length + (selectable ? 1 : 0);
+  const visibleIds = React.useMemo(() => units.map((u) => u.id), [units]);
+  const selectedVisible = selectedIds
+    ? visibleIds.filter((id) => selectedIds.has(id)).length
+    : 0;
+  const allVisibleSelected =
+    visibleIds.length > 0 && selectedVisible === visibleIds.length;
 
   const towerName = React.useMemo(() => {
     const map = new Map<string, string>();
@@ -95,6 +117,17 @@ export function UnitTable({
     <Table role="grid">
       <TableHeader>
         <TableRow className="hover:bg-transparent">
+          {selectable ? (
+            <TableHead className="w-8">
+              <Checkbox
+                checked={allVisibleSelected}
+                indeterminate={selectedVisible > 0 && !allVisibleSelected}
+                disabled={isLoading || visibleIds.length === 0}
+                aria-label="Select all units"
+                onChange={(e) => onToggleAll?.(visibleIds, e.target.checked)}
+              />
+            </TableHead>
+          ) : null}
           {COLUMNS.map((c) => (
             <TableHead key={c.key} numeric={c.numeric}>
               {c.label}
@@ -106,8 +139,8 @@ export function UnitTable({
         {isLoading ? (
           Array.from({ length: 8 }).map((_, i) => (
             <TableRow key={i} className="hover:bg-transparent">
-              {COLUMNS.map((c) => (
-                <TableCell key={c.key}>
+              {Array.from({ length: colCount }).map((__, j) => (
+                <TableCell key={j}>
                   <Skeleton className="h-3 w-full" />
                 </TableCell>
               ))}
@@ -116,7 +149,7 @@ export function UnitTable({
         ) : units.length === 0 ? (
           <TableRow className="hover:bg-transparent">
             <TableCell
-              colSpan={COLUMNS.length}
+              colSpan={colCount}
               className="py-6 text-center text-xs text-muted-foreground"
             >
               No units match the current filters.
@@ -141,6 +174,21 @@ export function UnitTable({
                 }}
                 className="cursor-pointer focus:bg-muted/60 focus:outline-none"
               >
+                {selectable ? (
+                  // The row itself opens the slide-over, so the checkbox cell
+                  // has to swallow the click/keyboard events it would bubble.
+                  <TableCell
+                    className="w-8"
+                    onClick={(e) => e.stopPropagation()}
+                    onKeyDown={(e) => e.stopPropagation()}
+                  >
+                    <Checkbox
+                      checked={selectedIds?.has(u.id) ?? false}
+                      aria-label={`Select unit ${u.unitNumber ?? u.id}`}
+                      onChange={(e) => onToggleOne?.(u.id, e.target.checked)}
+                    />
+                  </TableCell>
+                ) : null}
                 <TableCell className="font-mono font-medium tabular-nums text-foreground">
                   {u.unitNumber ?? u.id.slice(0, 8)}
                 </TableCell>

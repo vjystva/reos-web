@@ -22,6 +22,7 @@ import { MetricCard } from "@/components/MetricCard";
 import { TowerSidebar } from "@/components/TowerSidebar";
 import { UnitGrid } from "@/components/UnitGrid";
 import { UnitTable } from "@/components/UnitTable";
+import { UnitBulkStatusBar } from "@/components/UnitBulkStatusBar";
 import { UnitSlideOver } from "@/components/UnitSlideOver";
 import { CreateUnitForm } from "@/components/CreateUnitForm";
 import { useProject } from "@/hooks/useProject";
@@ -334,6 +335,46 @@ function ProjectDetailContent({ projectId }: { projectId: string }) {
    */
   const buckets = React.useMemo(() => unitStatusBucketCounts(units), [units]);
 
+  /**
+   * Bulk-action selection. Table view only — the grid tiles are a
+   * visual/availability read, and there is no sane hit target for a checkbox on
+   * them. Selection is dropped whenever the visible set changes (tower/filter
+   * switch, refetch) so a "Block selected" can never act on units that scrolled
+   * out of the user's view.
+   */
+  const [selectedIds, setSelectedIds] = React.useState<Set<string>>(
+    () => new Set(),
+  );
+  const canBulkStatus =
+    currentUser?.role === "builder_admin" ||
+    currentUser?.role === "admin" ||
+    currentUser?.role === "sales_manager";
+  const bulkEnabled = view === "table" && canBulkStatus;
+
+  const visibleIdsKey = units.map((u) => u.id).join(",");
+  React.useEffect(() => {
+    setSelectedIds(new Set());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visibleIdsKey, bulkEnabled]);
+
+  const selectedUnits = React.useMemo(
+    () => units.filter((u) => selectedIds.has(u.id)),
+    [units, selectedIds],
+  );
+
+  function toggleOne(id: string, checked: boolean) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }
+
+  function toggleAll(ids: string[], checked: boolean) {
+    setSelectedIds(() => (checked ? new Set(ids) : new Set()));
+  }
+
   return (
     <div className="space-y-3">
       <PageHeader
@@ -453,6 +494,15 @@ function ProjectDetailContent({ projectId }: { projectId: string }) {
         />
 
         <div className="min-w-0 flex-1 space-y-2">
+          {bulkEnabled ? (
+            <UnitBulkStatusBar
+              projectId={projectId}
+              selected={selectedUnits}
+              role={currentUser?.role ?? null}
+              onClearSelection={() => setSelectedIds(new Set())}
+            />
+          ) : null}
+
           {unitsQ.isError ? (
             <ErrorBanner
               message="Could not load units."
@@ -464,6 +514,9 @@ function ProjectDetailContent({ projectId }: { projectId: string }) {
               towers={towersQ.data?.data ?? []}
               projectName={projectQ.data?.name ?? null}
               isLoading={unitsLoading}
+              selectedIds={bulkEnabled ? selectedIds : undefined}
+              onToggleOne={bulkEnabled ? toggleOne : undefined}
+              onToggleAll={bulkEnabled ? toggleAll : undefined}
             />
           ) : (
             <UnitGrid units={units} isLoading={unitsLoading} />

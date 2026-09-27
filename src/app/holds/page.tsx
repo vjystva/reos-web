@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useHolds, holdStatusLabel, holdStatusClass, holdTimeRemainingLabel, holdIsExpired } from '@/hooks/useHolds';
+import { RequestHoldExtensionButton } from '@/components/RequestHoldExtensionButton';
 
 type StatusFilter = 'all' | 'active' | 'released' | 'converted' | 'expired';
 
@@ -82,6 +83,19 @@ export default function HoldsPage() {
               </div>
 
               <div className="flex items-center gap-3">
+                {/*
+                  Extending a hold goes through the approvals queue — there is no
+                  direct "extend" action anywhere, by design: only an approved
+                  `hold_extension` moves `expiresAt`. Offered on active holds
+                  only; the backend rejects a request against any other status.
+                */}
+                {hold.status === 'active' && !holdIsExpired(hold.expiresAt) ? (
+                  <RequestHoldExtensionButton
+                    holdId={hold.id}
+                    unitLabel={`Unit ${hold.unitId.slice(0, 8)}`}
+                    expiresAt={hold.expiresAt}
+                  />
+                ) : null}
                 <span className={`badge ${holdStatusClass(hold.status)}`}>
                   {holdStatusLabel(hold.status)}
                 </span>

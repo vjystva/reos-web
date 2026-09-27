@@ -60,3 +60,49 @@ export function availableTransitions(
 export function requiresNote(target: UnitStatus | string): boolean {
   return UNIT_TRANSITIONS_REQUIRE_NOTE.includes(target as UnitStatus);
 }
+
+/* ---------------------------------------------------------------------------
+ * Bulk status change (`POST /bulk/units/status`)
+ * ------------------------------------------------------------------------ */
+
+export interface BulkStatusCandidate {
+  id: string;
+  status?: string | null;
+  unitNumber?: string;
+}
+
+export interface BulkStatusEligibility<T extends BulkStatusCandidate> {
+  /** Units the backend should accept for this target. */
+  eligible: T[];
+  /** Units filtered out client-side, with the reason to show the user. */
+  skipped: Array<{ unit: T; reason: string }>;
+}
+
+/**
+ * Split a selection into what can move to `target` and what cannot — the same
+ * UX-only mirror caveat as the rest of this module: the backend re-checks
+ * everything and reports per-item failures regardless. This exists so a
+ * "Block selected" over 50 mixed-status units sends only the 30 that can
+ * actually move, instead of 20 predictable per-item errors.
+ */
+export function bulkStatusEligibility<T extends BulkStatusCandidate>(
+  units: readonly T[],
+  target: UnitStatus,
+  role: string | null | undefined,
+): BulkStatusEligibility<T> {
+  const eligible: T[] = [];
+  const skipped: Array<{ unit: T; reason: string }> = [];
+  for (const unit of units) {
+    const current = (unit.status ?? "").toLowerCase();
+    if (current === target) {
+      skipped.push({ unit, reason: `already ${target}` });
+      continue;
+    }
+    if (!availableTransitions(current, role).includes(target)) {
+      skipped.push({ unit, reason: `cannot go ${current || "—"} → ${target}` });
+      continue;
+    }
+    eligible.push(unit);
+  }
+  return { eligible, skipped };
+}

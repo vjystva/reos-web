@@ -30,6 +30,7 @@ import {
 import { useUsers } from "@/hooks/useUsers";
 import { useTenantSiteVisits } from "@/hooks/useTenantSiteVisits";
 import { useCreateUserMutation } from "@/hooks/useCreateUserMutation";
+import { useUpdateUserMutation } from "@/hooks/useUpdateUserMutation";
 import {
   buildRepRows,
   fetchSalesTargets,
@@ -37,8 +38,21 @@ import {
   type RepRow,
 } from "@/lib/salesPerformance";
 import { inr } from "@/lib/utils";
-import { CreateUserRequestSchema, USER_ROLES } from "@/types/api";
-import type { CreateUserRequest } from "@/types/api";
+import {
+  CreateUserRequestSchema,
+  UpdateUserRequestSchema,
+  USER_ROLES,
+} from "@/types/api";
+import type { CreateUserRequest, UpdateUserRequest } from "@/types/api";
+
+/**
+ * One Sheet serves both create and edit, discriminated on `kind` — the same
+ * shape the dealers roster uses (src/app/dashboard/dealers/page.tsx).
+ */
+type SheetMode =
+  | { kind: "closed" }
+  | { kind: "create" }
+  | { kind: "edit"; row: RepRow };
 
 const ROLE_LABELS: Record<string, string> = {
   builder_admin: "Builder Admin",
@@ -87,6 +101,7 @@ function CreateUserForm({
   onSubmit,
   onCancel,
 }: CreateUserFormProps) {
+  const [name, setName] = React.useState("");
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [role, setRole] = React.useState<string>(USER_ROLES[0]);
@@ -96,7 +111,14 @@ function CreateUserForm({
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const result = CreateUserRequestSchema.safeParse({ email, password, role });
+    // A blank name is transformed to `undefined` by the schema, so the request
+    // body simply omits the key rather than sending "".
+    const result = CreateUserRequestSchema.safeParse({
+      name,
+      email,
+      password,
+      role,
+    });
     if (!result.success) {
       const flat = result.error.flatten().fieldErrors;
       setValidationErrors(
@@ -117,6 +139,21 @@ function CreateUserForm({
           {error}
         </div>
       )}
+      <div className="space-y-1">
+        <label className="block text-[11px] uppercase tracking-wider text-muted-foreground">
+          Name
+        </label>
+        <Input
+          type="text"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Optional — e.g. Priya Shah"
+          autoComplete="name"
+        />
+        {validationErrors.name && (
+          <p className="text-xs text-red-600">{validationErrors.name}</p>
+        )}
+      </div>
       <div className="space-y-1">
         <label className="block text-[11px] uppercase tracking-wider text-muted-foreground">
           Email
@@ -175,15 +212,167 @@ function CreateUserForm({
 }
 
 /* -------------------------------------------------------------------------
+ * Edit-user form
+ * ---------------------------------------------------------------------- */
+
+interface EditUserFormProps {
+  row: RepRow;
+  isSubmitting: boolean;
+  error: string | null;
+  onSubmit: (data: UpdateUserRequest) => void;
+  onCancel: () => void;
+}
+
+/**
+ * Edits `name` / `role` / `isActive` only — the backend's PATCH endpoint does
+ * not accept `email` or `password`, so the email is shown read-only rather than
+ * as a field that silently does nothing.
+ *
+ * Pre-fills from `row.name` (the stored value), NOT `row.label` — `label` may
+ * be the email-derived fallback, and saving that would turn a computed
+ * placeholder into real stored data.
+ *
+ * `key={row.userId}` at the call site remounts this on row change so the
+ * useState initialisers re-run.
+ */
+function EditUserForm({
+  row,
+  isSubmitting,
+  error,
+  onSubmit,
+  onCancel,
+}: EditUserFormProps) {
+  const [name, setName] = React.useState(row.name ?? "");
+  const [role, setRole] = React.useState<string>(row.role);
+  const [isActive, setIsActive] = React.useState(row.isActive);
+  const [validationErrors, setValidationErrors] = React.useState<
+    Record<string, string>
+  >({});
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    // Blank `name` is sent through as "" on purpose: that is how the user
+    // clears a name, and the backend normalises it to NULL.
+    const result = UpdateUserRequestSchema.safeParse({ name, role, isActive });
+    if (!result.success) {
+      const flat = result.error.flatten().fieldErrors;
+      setValidationErrors(
+        Object.fromEntries(
+          Object.entries(flat).map(([k, v]) => [k, v?.[0] ?? ""]),
+        ),
+      );
+      return;
+    }
+    setValidationErrors({});
+    onSubmit(result.data);
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      {error && (
+        <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+          {error}
+        </div>
+      )}
+      <div className="space-y-1">
+        <span className="block text-[11px] uppercase tracking-wider text-muted-foreground">
+          Email
+        </span>
+        <p className="truncate font-mono text-xs text-foreground">{row.email}</p>
+        <p className="text-[11px] text-muted-foreground">
+          Email and password cannot be changed here.
+        </p>
+      </div>
+      <div className="space-y-1">
+        <label
+          className="block text-[11px] uppercase tracking-wider text-muted-foreground"
+          htmlFor="edit-user-name"
+        >
+          Name
+        </label>
+        <Input
+          id="edit-user-name"
+          type="text"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="e.g. Priya Shah"
+          autoComplete="name"
+        />
+        {validationErrors.name && (
+          <p className="text-xs text-red-600">{validationErrors.name}</p>
+        )}
+      </div>
+      <div className="space-y-1">
+        <label
+          className="block text-[11px] uppercase tracking-wider text-muted-foreground"
+          htmlFor="edit-user-role"
+        >
+          Role
+        </label>
+        <Select
+          id="edit-user-role"
+          value={role}
+          onChange={(e) => setRole(e.target.value)}
+        >
+          {USER_ROLES.map((r) => (
+            <option key={r} value={r}>
+              {roleLabel(r)}
+            </option>
+          ))}
+        </Select>
+        {validationErrors.role && (
+          <p className="text-xs text-red-600">{validationErrors.role}</p>
+        )}
+        {!USER_ROLES.includes(row.role as (typeof USER_ROLES)[number]) && (
+          <p className="text-[11px] text-accent-foreground">
+            This member&rsquo;s current role ({roleLabel(row.role)}) is not
+            assignable here — saving will change it to the selected role.
+          </p>
+        )}
+      </div>
+      <div className="space-y-1">
+        <label
+          className="block text-[11px] uppercase tracking-wider text-muted-foreground"
+          htmlFor="edit-user-status"
+        >
+          Status
+        </label>
+        <Select
+          id="edit-user-status"
+          value={isActive ? "active" : "inactive"}
+          onChange={(e) => setIsActive(e.target.value === "active")}
+        >
+          <option value="active">Active</option>
+          <option value="inactive">Inactive</option>
+        </Select>
+        <p className="text-[11px] text-muted-foreground">
+          Inactive members cannot sign in.
+        </p>
+      </div>
+      <div className="flex gap-2 pt-2">
+        <Button type="submit" disabled={isSubmitting} className="flex-1">
+          {isSubmitting ? "Saving…" : "Save changes"}
+        </Button>
+        <Button type="button" variant="outline" onClick={onCancel}>
+          Cancel
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+/* -------------------------------------------------------------------------
  * Roster table
  * ---------------------------------------------------------------------- */
 
 function TeamTable({
   rows,
   isLoading,
+  onEdit,
 }: {
   rows: RepRow[];
   isLoading: boolean;
+  onEdit: (row: RepRow) => void;
 }) {
   if (isLoading) {
     return (
@@ -215,11 +404,15 @@ function TeamTable({
           <TableHead numeric>Achieved</TableHead>
           <TableHead className="w-[11rem]">Achievement</TableHead>
           <TableHead>Status</TableHead>
+          <TableHead className="text-right">Actions</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
         {rows.map((row) => (
           <TableRow key={row.userId}>
+            {/* Primary line is `row.label` — `users.name` when set, else the
+                email local-part (see repDisplayName in lib/salesPerformance).
+                Email stays on the secondary line as the unambiguous id. */}
             <TableCell className="max-w-[16rem]">
               <span className="block truncate font-medium text-foreground">
                 {row.label}
@@ -277,6 +470,11 @@ function TeamTable({
                 {row.isActive ? "Active" : "Inactive"}
               </StatusPill>
             </TableCell>
+            <TableCell className="text-right">
+              <Button size="sm" variant="outline" onClick={() => onEdit(row)}>
+                Edit
+              </Button>
+            </TableCell>
           </TableRow>
         ))}
       </TableBody>
@@ -289,12 +487,13 @@ function TeamTable({
  * ---------------------------------------------------------------------- */
 
 export default function TeamPage() {
-  const [sheetOpen, setSheetOpen] = React.useState(false);
+  const [sheet, setSheet] = React.useState<SheetMode>({ kind: "closed" });
   const [formError, setFormError] = React.useState<string | null>(null);
   const [period, setPeriod] = React.useState("");
 
   const usersQuery = useUsers();
   const createMutation = useCreateUserMutation();
+  const updateMutation = useUpdateUserMutation();
 
   const visitRange = React.useMemo(
     () => ({
@@ -327,14 +526,31 @@ export default function TeamPage() {
   const attainment =
     totals.quota > 0 ? Math.round((totals.achieved / totals.quota) * 100) : null;
 
+  function closeSheet() {
+    setSheet({ kind: "closed" });
+    setFormError(null);
+  }
+
   async function handleCreate(data: CreateUserRequest) {
     setFormError(null);
     try {
       await createMutation.mutateAsync(data);
-      setSheetOpen(false);
+      closeSheet();
     } catch (err) {
       setFormError(
         err instanceof Error ? err.message : "Failed to create user",
+      );
+    }
+  }
+
+  async function handleUpdate(userId: string, data: UpdateUserRequest) {
+    setFormError(null);
+    try {
+      await updateMutation.mutateAsync({ userId, body: data });
+      closeSheet();
+    } catch (err) {
+      setFormError(
+        err instanceof Error ? err.message : "Failed to update user",
       );
     }
   }
@@ -354,7 +570,7 @@ export default function TeamPage() {
             />
             <Button
               onClick={() => {
-                setSheetOpen(true);
+                setSheet({ kind: "create" });
                 setFormError(null);
               }}
             >
@@ -435,7 +651,14 @@ export default function TeamPage() {
           onRetry={() => void usersQuery.refetch()}
         />
       ) : (
-        <TeamTable rows={rows} isLoading={usersQuery.isLoading} />
+        <TeamTable
+          rows={rows}
+          isLoading={usersQuery.isLoading}
+          onEdit={(row) => {
+            setFormError(null);
+            setSheet({ kind: "edit", row });
+          }}
+        />
       )}
 
       <p className="text-[11px] text-muted-foreground">
@@ -450,21 +673,41 @@ export default function TeamPage() {
           : ""}
       </p>
 
-      <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
+      <Sheet
+        open={sheet.kind !== "closed"}
+        onOpenChange={(open) => {
+          if (!open) closeSheet();
+        }}
+      >
         <SheetContent className="overflow-y-auto sm:max-w-md">
           <SheetHeader>
-            <SheetTitle>Add team member</SheetTitle>
+            <SheetTitle>
+              {sheet.kind === "edit" ? "Edit team member" : "Add team member"}
+            </SheetTitle>
             <SheetDescription>
-              Create a new user account with a designated role.
+              {sheet.kind === "edit"
+                ? "Update this member's name, role or access status."
+                : "Create a new user account with a designated role."}
             </SheetDescription>
           </SheetHeader>
           <div className="mt-6">
-            <CreateUserForm
-              isSubmitting={createMutation.isPending}
-              error={formError}
-              onSubmit={(data) => void handleCreate(data)}
-              onCancel={() => setSheetOpen(false)}
-            />
+            {sheet.kind === "edit" ? (
+              <EditUserForm
+                key={sheet.row.userId}
+                row={sheet.row}
+                isSubmitting={updateMutation.isPending}
+                error={formError}
+                onSubmit={(data) => void handleUpdate(sheet.row.userId, data)}
+                onCancel={closeSheet}
+              />
+            ) : sheet.kind === "create" ? (
+              <CreateUserForm
+                isSubmitting={createMutation.isPending}
+                error={formError}
+                onSubmit={(data) => void handleCreate(data)}
+                onCancel={closeSheet}
+              />
+            ) : null}
           </div>
         </SheetContent>
       </Sheet>
